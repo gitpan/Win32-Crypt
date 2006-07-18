@@ -1,0 +1,16 @@
+---
+name: Win32-Crypt
+version: 0.00_001
+author:
+  - 'Sascha Kiefer, L<esskar@cpan.org>'
+abstract: |-
+  Perl interface to functions that assist in working
+  with Microsoft's CryptoAPI
+license: perl
+requires:
+  Win32::API::Interface: 0.01
+provides:
+  Win32::Crypt::API:
+    file: lib/Win32/Crypt/API.pm
+    version: 0.00_001
+generated_by: Module::Build version 0.2611

@@ -1,0 +1,9 @@
+Build.pl
+lib/Win32/Crypt/API.pm
+MANIFEST			This list of files
+META.yml
+t/01use.t
+t/02pod.t
+t/03podcoverage.t
+Makefile.PL
+README
