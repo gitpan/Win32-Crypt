@@ -1,9 +1,12 @@
 Build.pl
+CHANGES
 lib/Win32/Crypt/API.pm
+lib/Win32/Crypt/API.pod
+Makefile.PL
 MANIFEST			This list of files
 META.yml
+README
 t/01use.t
 t/02pod.t
 t/03podcoverage.t
-Makefile.PL
-README
+t/04certstore.t

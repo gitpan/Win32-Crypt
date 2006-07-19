@@ -5,7 +5,8 @@ WriteMakefile
           'NAME' => 'Win32::Crypt',
           'VERSION_FROM' => 'lib/Win32/Crypt/API.pm',
           'PREREQ_PM' => {
-                           'Win32::API::Interface' => '0.01'
+                           'Win32::API::Interface' => '0.01',
+                           'constant' => '1.05'
                          },
           'INSTALLDIRS' => 'site',
           'PL_FILES' => {}

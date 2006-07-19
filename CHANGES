@@ -1,0 +1,10 @@
+Revision history for Perl extension Win32::Crypt
+
+0.00_002  Wed Jul 19 19:41 2006
+	- CHANGES file added
+	- POD added
+	- CONSTANTS added
+	- dependencies added
+
+0.00_001  Wed Jul 19 00:55 2006
+	- original version.
