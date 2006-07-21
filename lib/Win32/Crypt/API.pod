@@ -21,6 +21,8 @@ applications.
 
     my $capi = Win32::Crypt::API->new;
 
+=head2 constant_names
+
 =head1 CERTIFICATE STORE FUNCTIONS
 
 A user site can, over time, collect many certificates. Typically, a site has
@@ -35,11 +37,483 @@ information stored in the certificates.
 The following functions are used to work with the certificate stores,
 themselves.
 
-=head2 CertAddStoreToCollection
+=head2 CertAddStoreToCollection( hCollectionStore, hSiblingStore, dwUpdateFlag, dwPriority )
 
-=head2 CertCloseStore
+The CertAddStoreToCollection function adds a sibling certificate store to a
+collection certificate store. When a certificate store has been added to a
+collection store, all of the certificates, CRLs, and CTLs in the store that
+has been added to the collection store can be retrieved by find or enumerate
+function calls using the collection store.
 
-=head2 CertControlStore
+    BOOL WINAPI CertAddStoreToCollection(
+        HCERTSTORE hCollectionStore,
+        HCERTSTORE hSiblingStore,
+        DWORD dwUpdateFlag,
+        DWORD dwPriority
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item hCollectionStore
+
+[in] Handle of a certificate store.
+
+=item hSiblingStore
+
+[in/optional] Handle of a sibling store to be added to the collection store. For more
+information, see the Remarks section later in this topic.
+
+=item dwUpdateFlag
+
+[in] Indicates whether certificates, CRLs, and CTLs can be added to the new sibling
+store member of the collection store. Set dwUpdateFlag to
+CERT_PHYSICAL_STORE_ADD_ENABLE_FLAG to enable addition or to zero to
+disable additions.
+
+=item dwPriority
+
+[in] Sets a priority level of the new store in the collection, with zero being the
+lowest priority. If zero is passed for this parameter, the specified store is
+appended as the last store in the collection. The priority levels of the stores
+in a collection determine the order in which the stores are enumerated, and
+the search order of the stores when attempting to retrieve a certificate, CRL,
+or CTL. Priority levels also determine to which store of a collection a new
+certificate, CRL, or CTL is added. For further information, see the Remarks
+section later in this topic.
+
+=back
+
+=item Return Values
+
+If the function succeeds, a new store is added to the collection of stores and the return value is TRUE.
+
+If the function fails, the store was not added and the return value is FALSE.
+
+=item Remarks
+
+A collection store has the same HCERTSTORE handle as a single store; thus,
+almost all functions that apply to any certificate store also apply to any
+collection store. Enumeration and search processes span all of the stores
+in a collection store; however, functions such as I<CertAddCertificateLinkToStore>
+that add links to stores cannot be used with collection stores.
+
+When a certificate, CRL, or CTL is added to a collection store, the list of
+sibling stores in the collection is searched in priority order to find the
+first store that allows adding. Adding is enabled if C
+ERT_PHYSICAL_STORE_ADD_ENABLE_FLAG was set in the CertAddStoreToCollection
+call. With any function that adds elements to a store, if a store that
+allows adding does not return success, the addition function continues on to
+the next store without providing notification.
+
+When a collection store and its sibling stores are closed with I<CertCloseStore>
+using CERT_CLOSE_STORE_FORCE_FLAG, the collection store must be closed before
+its sibling stores. If CERT_CLOSE_STORE_FORCE_FLAG is not used, the stores can
+be closed in any order.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP4 and later.
+
+B<Windows 95/98/Me:> Unsupported.
+
+=back
+
+=head2 CertAddCertificateLinkToStore( hCertStore, pCertContext, dwAddDisposition, ppStoreContext )
+
+The I<CertAddCertificateLinkToStore> function adds a link in a certificate store
+to a certificate context in a different store. Instead of creating and adding
+a duplicate of the certificate context, this function adds a link to the
+original certificate.
+
+    BOOL WINAPI CertAddCertificateLinkToStore(
+        HCERTSTORE hCertStore,
+        PCCERT_CONTEXT pCertContext,
+        DWORD dwAddDisposition,
+        PCCERT_CONTEXT *ppStoreContext
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item hCertStore
+
+[in] Handle to the certificate store where the link is to be added.
+
+=item pCertContext
+
+[in] Pointer to the CERT_CONTEXT structure to be linked.
+
+=item dwAddDisposition
+
+[in] Specifies the action if a matching certificate or a link to a matching
+certificate already exists in the store. Currently defined disposition
+values and their uses are as follows.
+
+=over 8
+
+=item CERT_STORE_ADD_ALWAYS
+
+The function makes no check for an existing matching certificate or link to a
+matching certificate. A new certificate is always added to the store. This can
+lead to duplicates in a store.
+
+=item CERT_STORE_ADD_NEW
+
+If a matching certificate or a link to a matching certificate exists, the
+operation fails. I<Win32::GetLastError()> returns the CRYPT_E_EXISTS code.
+
+=item CERT_STORE_ADD_REPLACE_EXISTING
+
+If a link to a matching certificate exists, that existing link is deleted and
+a new link is created and added to the store. If no matching certificate or
+link to a matching certificate exists, one is added.
+
+=item CERT_STORE_ADD_USE_EXISTING
+
+If a matching certificate or a link to a matching certificate exists, the
+existing certificate is used. The function does not fail, but no new link is
+added. If no matching certificate or link to a matching certificate exists,
+a new link is added.
+
+=back
+
+=item ppStoreContext
+
+[out/optional] Pointer to a pointer to a copy of the link created. The ppStoreContext
+parameter can be NULL to indicate that a copy of the link is not needed.
+If a copy of the link is created, that copy must be freed using
+I<CertFreeCertificateContext>.
+
+=back
+
+=item Return Values
+
+If the function succeeds, the return value is TRUE.
+
+If the function fails, the return value is FALSE. For extended error
+information, call I<Win32::GetLastError()>. Some possible error codes follow.
+
+=over 4
+
+=item CRYPT_E_EXISTS
+
+For a I<dwAddDisposition> parameter of CERT_STORE_ADD_NEW, the certificate
+already exists in the store.
+
+=item E_INVALIDARG
+
+An invalid disposition value was specified in the I<dwAddDisposition> parameter.
+
+=back
+
+=item Remarks
+
+Because the link provides access to the original certificate context, setting
+an extended property in the linked certificate context changes that extended
+property in the certificate's original location and in any other links to that
+certificate.
+
+Links cannot be added to a store opened as a collection. Stores opened as
+collections include all stores opened with I<CertOpenSystemStore> or
+I<CertOpenStore> using CERT_STORE_PROV_SYSTEM or CERT_STORE_PROV_COLLECTION.
+For additional information, see I<CertAddStoreToCollection>.
+
+If links are used and I<CertCloseStore> is called with CERT_CLOSE_STORE_FORCE_FLAG,
+the store using links must be closed before the store containing the original
+contexts is closed. If CERT_CLOSE_STORE_FORCE_FLAG is not used, the two stores
+can be closed in either order.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP4 and later.
+
+B<Windows 95/98/Me:> Unsupported.
+
+=back
+
+=head2 CertCloseStore( hCertStore, dwFlags )
+
+The I<CertCloseStore> function closes a certificate store handle and reduces
+the reference count on the store. There needs to be a corresponding call to
+I<CertCloseStore> for each successful call to the I<CertOpenStore> or
+I<CertDuplicateStore> functions.
+
+    BOOL WINAPI CertCloseStore(
+        HCERTSTORE hCertStore,
+        DWORD dwFlags
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item hCertStore
+
+[in] Handle of the certificate store to be closed.
+
+=item dwFlags
+
+[in] Typically, this parameter uses the default value zero. The default is to close
+the store with memory remaining allocated for contexts that have not been
+freed. In this case, no check is made to determine whether memory for contexts
+remains allocated.
+
+Set flags can force the freeing of memory for all of a store's certificate,
+CRL, and CTL contexts when the store is closed. Flags can also be set that
+check whether all of the store's certificate, CRL, and CTL contexts have been
+freed. The following values are defined.
+
+=over 8
+
+=item CERT_CLOSE_STORE_CHECK_FLAG
+
+Checks for nonfreed certificate, CRL, and CTL contexts. A returned error code
+indicates that one or more store elements is still in use. This flag should
+only be used as a diagnostic tool in the development of applications.
+
+=item CERT_CLOSE_STORE_FORCE_FLAG
+
+Forces the freeing of memory for all contexts associated with the store. This
+flag can be safely used only when the store is opened in a function and neither
+the store handle nor any of its contexts are passed to any called functions.
+For details, see the Remarks section later in this topic.
+
+=back
+
+=back
+
+=item Return Values
+
+If the function succeeds, the return value is TRUE.
+
+If the function fails, the return value is FALSE. For extended error
+information, call I<Win32::GetLastError()>.
+
+If CERT_CLOSE_STORE_CHECK_FLAG is not set or if it is set and all contexts
+associated with the store have been freed, the return value is TRUE.
+
+If CERT_CLOSE_STORE_CHECK_FLAG is set and memory for one or more contexts
+associated with the store remains allocated, the return value is FALSE.
+The store is always closed even when the function returns FALSE.
+
+I<Win32::GetLastError()> is set to CRYPT_E_PENDING_CLOSE if memory for contexts
+associated with the store remains allocated. Any existing value returned by
+I<Win32::GetLastError()> is preserved unless CERT_CLOSE_STORE_CHECK_FLAG is set.
+
+=item Remarks
+
+While a certificate store is open, contexts from that store can be retrieved
+or duplicated. When a context is retrieved or duplicated, its reference count
+is incremented. When a context is freed by passing it to a search or
+enumeration function as a previous context or by using
+I<CertFreeCertificateContext>, I<CertFreeCRLContext>, or I<CertFreeCTLContext>,
+its reference count is decremented. When a context's reference count reaches
+zero, memory allocated for that context is automatically freed. When the
+memory allocated for a context has been freed, any pointers to that context
+become invalid.
+
+By default, memory used to store contexts with reference count greater than
+zero is not freed when a certificate store is closed. References to those
+contexts remain valid; however, this can cause "memory leaks." Also, any
+changes made to the properties of a context after the store has been closed
+are not persisted.
+
+To force the freeing of memory for all contexts associated with a store, set
+CERT_STORE_CLOSE_FORCE_FLAG. With this flag set, memory for all contexts
+associated with the store is freed and all pointers to certificate, CRL, or
+CTL contexts associated with the store become invalid. This flag should only
+be set when the store is opened in a function and neither the store handle nor
+any of its contexts were ever passed to any called functions.
+
+The status of reference counts on contexts associated with a store can be
+checked when the store is closed by using CERT_CLOSE_STORE_CHECK_FLAG.
+When this flag is set, and all certificate, CRL, or CTL contexts have not
+been released, the function returns FALSE and I<Win32::GetLastError()> returns
+CRYPT_E_PENDING_CLOSE. Note that the store is still closed when FALSE is
+returned and the memory for any active contexts is not freed.
+
+If CERT_STORE_NO_CRYPT_RELEASE_FLAG was not set when the store was opened,
+closing a store releases its CSP handle.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP3 and later.
+
+B<Windows 95/98/Me:> Included in Windows 95 OSR2 and later.
+
+B<Redistributable:> Requires Internet Explorer 3.02 or later on Windows NT 4.0.
+
+=back
+
+=head2 CertControlStore( hCertStore, dwFlags, dwCtrlType, dwCtrlType )
+
+The CertControlStore function allows an application to be notified when there
+is a difference between the contents of a cached store in use and the contents
+of that store as it is persisted to storage. Differences can occur as another
+process makes a change that affects the store as it is persisted.
+
+The CertControlStore function can be used to synchronize a cached store if
+necessary, and provides a means to commit changes made in the cached store
+to persisted storage. Additional functionality is planned.
+
+    BOOL WINAPI CertControlStore(
+        HCERTSTORE hCertStore,
+        DWORD dwFlags,
+        DWORD dwCtrlType,
+        void const *dwCtrlType
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item hCertStore
+
+[in] Handle of the certificate store.
+
+=item dwFlags
+
+[in] If the I<dwCtrlType> parameter is set to CERT_STORE_CTRL_COMMIT, the following
+dwFlags are defined:
+
+=over 8
+
+=item CERT_STORE_CTRL_COMMIT_FORCE_FLAG
+
+Forces the contents of the cache memory store to be copied to permanent storage
+even if the cache has not been changed.
+
+=item CERT_STORE_CTRL_COMMIT_CLEAR_FLAG
+
+Inhibits the copying the contents of the cache memory store to permanent
+storage even when the store is closed.
+
+=item CERT_STORE_CTRL_INHIBIT_DUPLICATE_HANDLE_FLAG
+
+Inhibits a duplicate handle of the event HANDLE. If this flag is set,
+I<CertControlStore> with CERT_STORE_CTRL_CANCEL_NOTIFY passed must be called
+for this event HANDLE before closing the I<hCertStore> handle.
+
+=back
+
+If I<dwCtrlType> is set to CERT_STORE_CTRL_NOTIFY_CHANGE or CERT_STORE_CTRL_RESYNC,
+the I<dwFlags> parameter is not used and must be set to zero.
+
+=item dwCtrlType
+
+[in] Control action to be taken by I<CertControlStore>. The interpretations of
+I<pvCtrlPara> and I<dwFlags> depend on the value of I<dwCtrlType>. Currently,
+the following three actions are defined:
+
+=over 8
+
+=item CERT_STORE_CTRL_RESYNC
+
+The cached store is resynchronized and made to match the persisted store.
+
+=item CERT_STORE_CTRL_NOTIFY_CHANGE
+
+A signal is returned in the space pointed to by I<pvCtrlPara> to indicate that
+the current contents of the cached store differ from the store's persisted state.
+
+=item CERT_STORE_CTRL_COMMIT
+
+Any changes made to the cached store are copied to persisted storage. If no
+changes were made since the cached store was opened or since the last commit,
+the call is ignored. The call is also ignored if the store provider is a
+provider that automatically persists changes immediately.
+
+=item CERT_STORE_CTRL_AUTO_RESYNC
+
+At the start of every enumeration or find store call, a check is made to
+determine whether or not a change has been made in the store. If the store h
+as changed, a re-synchronization is done. This check is only done on first
+enumeration or find calls, when the I<pPrevContext> is 0.
+
+The I<pvCtrPara> member is not used and must be set to 0.
+
+=item CERT_STORE_CTRL_CANCEL_NOTIFY
+
+Cancels notification signaling of the event HANDLE passed in a previous
+CERT_STORE_CTRL_NOTIFY_CHANGE or CERT_STORE_CTRL_RESYNC. The I<pvCtrlPara>
+parameter points to the event HANDLE to be canceled.
+
+=back
+
+=item pvCtrlPara
+
+[in] If dwCtrlType is CERT_STORE_NOTIFY_CHANGE, pvCtrlPara is set to the
+address of a handle where the system signals the notification change event
+when a change from the persisted state of the store is detected. The handle
+must be initialized with a call to the function CreateEvent. The pvCtrlPara
+parameter can be set to NULL for registry-based stores. If pvCrtlPara is 0, an
+internal notification change event is created and registered to be signaled.
+Using the internal notification change event allows resynchronization operations
+only if the store was changed.
+
+If I<dwCtrlType> is CERT_STORE_CTRL_RESYNC, set pvCtrlPara to the address of
+the event handle to be signaled on the next change in the persisted store.
+Typically, this address is the address of the event handle passed with
+CERT_STORE_CTRL_NOTIFY_CHANGE during initialization. The event handle passed
+is rearmed. If I<pvCtrlPara> is set to 0, no event is rearmed.
+
+If I<dwCtrlType> CERT_STORE_CTRL_COMMIT, I<pvCtrlPara> is not used and must be
+set to 0.
+
+=back
+
+=item Return Values
+
+If the function succeeds, the return value is TRUE.
+
+If the function fails, the return value is FALSE. For extended error information,
+call I<Win32::GetLastError()>.
+
+If I<dwCtrlType> is CERT_STORE_NOTIFY_CHANGE, the function returns TRUE if a
+handle for the event signal was successfully set up. The function returns
+FALSE if the event handle was not set up.
+
+If I<dwCtrlType> is CERT_STORE_CTRL_RESYNC, the function returns TRUE if the
+resynchronization succeeded and FALSE if the resynchronization failed.
+
+If dwCtrlType is CERT_STORE_CTRL_COMMIT, the function returns TRUE to indicate
+the successful completion of the commit to persisted storage and FALSE if the
+commit failed.
+
+Some providers might not support specific control types. In these cases,
+I<CertControlStore> returns FALSE and GetLastError is set to the
+ERROR_NOT_SUPPORTED code.
+
+=item Remarks
+Resynchronization of a store can be done at any time. It need not follow a
+signaled notification change event.
+
+CERT_STORE_CTRL_NOTIFY_CHANGE is supported on registry based store providers
+by using the RegNotifyChangeKeyValue function.
+
+I<CertControlStore> using CERT_STORE_CTRL_NOTIFY_CHANGE is called once for
+each event handle to be passed with CERT_STORE_CTRL_RESYNC. These calls using
+CERT_STORE_CTRL_NOTIFY_CHANGE must be made after each event is created and not
+after an event has been signaled.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP4 and later.
+
+B<Windows 95/98/Me:> Unsupported.
+
+=back
 
 =head2 CertDuplicateStore
 
@@ -75,7 +549,7 @@ special cases.
 
 =item lpszStoreProvider
 
-Specifies the store provider type. The following predefined store provider
+[in] Specifies the store provider type. The following predefined store provider
 types furnish most common application needs.
 
     CERT_STORE_PROV_MEMORY
@@ -97,7 +571,7 @@ For more information, please check L<http://msdn.mircosoft.com>.
 
 =item dwMsgAndCertEncodingType
 
-Applicable only to the CERT_STORE_PROV_PKCS7 or CERT_STORE_PROV_FILENAME
+[in] Applicable only to the CERT_STORE_PROV_PKCS7 or CERT_STORE_PROV_FILENAME
 provider types. For all other provider types, this parameter is unused and
 should be set to 0.
 
@@ -114,22 +588,223 @@ The most common encoding types are used by passing
 
 =item hCryptProv
 
-Handle to a cryptographic provider. Passing 0 in this parameter causes an
+[in] Handle to a cryptographic provider. Passing 0 in this parameter causes an
 appropriate, default provider to be used. Using the default provider is
 recommended. The default or specified cryptographic provider is used for all
 store functions that verify the signature of a subject certificate or CRL.
 
 =item dwFlags
 
-These values consist of high-word and low-word values combined using a
+[in] These values consist of high-word and low-word values combined using a
 bitwise-OR operation. The low-word portion of dwFlags controls a variety of
 general characteristics of the certificate store opened. This portion can be
-used with all store provider types. Currently defined low-word values are
-listed at L<http://msdn.mircosoft.com>.
+used with all store provider types. Currently defined low-word values are:
+
+=over 8
+
+=item CERT_STORE_CREATE_NEW_FLAG
+
+A new store is created if one did not exist. The function fails if the store
+already exists.
+
+If neither CERT_STORE_OPEN_EXISTING_FLAG nor
+CERT_STORE_CREATE_NEW_FLAG is set, a store is opened if it exists or is
+created and opened if it did not already exist.
+
+=item CERT_STORE_DEFER_CLOSE_UNTIL_LAST_FREE_FLAG
+
+The closing of a store's provider cannot be done when I<CertCloseStore> is called
+but will be deferred if certificates, CRLs, or CTLs obtained from the store
+are still in use. The store is actually closed when the last certificate, CRL,
+or CTL obtained from the store is freed. Any changes made to properties of
+these certificates, CRLs, and CTLs, even after the call to I<CertCloseStore>,
+are persisted.
+
+If this flag is not set and certificates, CRLs, or CTLs obtained from the
+store are still in use, the properties of those certificates, CRLs, and CTLs
+can be changed, but those changes are not persisted. Setting this flag causes
+those changes to be persisted.
+
+Note that setting this flag causes extra overhead in doing context
+duplications and free operations.
+
+If CertCloseStore is called with CERT_CLOSE_STORE_FORCE_FLAG,
+CERT_STORE_DEFER_CLOSE_UNTIL_LAST_FREE_FLAG is ignored.
+
+When this flag is set and a non-0 I<hCryptProv> value is passed, that provider
+will continue to be used even after the call to I<CertCloseStore>.
+
+=item CERT_STORE_DELETE_FLAG
+
+The store is deleted instead of being opened. I<CertOpenStore> returns 0 for
+both success and failure of the deletion. To determine the success of the
+deletion, call I<Win32::GetLastError>, which returns zero if the store was deleted and a
+nonzero value if it was not deleted.
+
+=item CERT_STORE_ENUM_ARCHIVED_FLAG
+
+Overrides the default procedure of skipping in enumerations all certificates
+with the CERT_ARCHIVED_PROP_ID property set. If this flag is set, an enumeration
+of the certificates in the store lists all of the certificates in the store,
+including those that have the CERT_ARCHIVED_PROP_ID property.
+
+=item CERT_STORE_MANIFOLD_FLAG
+
+Certificates are checked for their manifold extension. When certificates are
+found with the same manifold extension, the "older" certificates are archived
+by setting their CERT_ARCHIVED_PROP_ID properties.
+
+=item CERT_STORE_NO_CRYPT_RELEASE_FLAG
+
+This flag is not used when the 0 is passed in the I<hCryptProv> parameter and
+the default CSP is used. The flag is valid when a non-0 CSP handle is
+passed as the I<hCryptProv> parameter. Setting this flag prevents the automatic
+release of a non-default CSP when the certificate store is closed.
+
+=item CERT_STORE_OPEN_EXISTING_FLAG
+
+Only an existing store can be opened. If the store does not exist,
+the function fails.
+
+=item CERT_STORE_READONLY_FLAG
+
+Any attempt to change the contents of the store results in an error. When this
+flag is set and a registry based store provider is being used, the registry
+subkeys are opened by using RegOpenKey with KEY_READ_ACCESS. Otherwise, the
+registry subkeys are created by using RegCreateKey with KEY_ALL_ACCESS.
+
+=item CERT_STORE_SET_LOCALIZED_NAME_FLAG
+
+If this flag is supported, the provider sets the store's
+CERT_STORE_LOCALIZED_NAME_PROP_ID property. The localized name can be
+retrieved by calling I<CertGetStoreProperty> with dwPropID set to
+CERT_STORE_LOCALIZED_NAME_PROP_ID. This flag is supported for providers of
+types CERT_STORE_PROV_FILENAME, CERT_STORE_PROV_SYSTEM,
+CERT_STORE_PROV_SYSTEM_REGISTRY, and CERT_STORE_PROV_PHYSICAL.
+
+=item CERT_STORE_UPDATE_KEYID_FLAG
+
+Within CurrentUser and LocalMachine, lists of key identifiers exist. These key
+identifiers have properties much like the properties of certificates. If the
+CERT_STORE_UPDATE_KEYID_FLAG is set, then for every key identifier in the
+store's location that has a CERT_KEY_PROV_INFO_PROP_ID property, that property
+is automatically updated from the key identifier property
+CERT_KEY_PROV_INFO_PROP_ID or the CERT_KEY_IDENTIFIER_PROP_ID of the
+certificate related to that key identifier.
+
+=item CERT_STORE_BACKUP_RESTORE_FLAG
+
+Uses the thread's SE_BACKUP_NAME and SE_RESTORE_NAME privileges to open
+registry or file-based system stores. If the thread does not have these
+privileges, I<CertOpenStore> fails with an access denied error.
+
+=back
+
+The CERT_STORE_PROV_SYSTEM, CERT_STORE_PROV_SYSTEM_REGISTER, and
+CERT_STORE_PROV_PHYSICAL provider types use the following high words of
+dwFlags to specify system store registry locations:
+
+=over 8
+
+=item CERT_SYSTEM_STORE_CURRENT_SERVICE
+
+=item CERT_SYSTEM_STORE_CURRENT_USER
+
+=item CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY
+
+=item CERT_SYSTEM_STORE_LOCAL_MACHINE
+
+=item CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE
+
+=item CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY
+
+=item CERT_SYSTEM_STORE_SERVICES
+
+=item CERT_SYSTEM_STORE_USERS
+
+=back
+
+A system store location opens, by default, relative to the HKEY_CURRENT_USER,
+HKEY_LOCAL_MACHINE or HKEY_USERS predefined registry key.
+
+The following high-word flags override this default behavior.
+
+=over 8
+
+=item CERT_SYSTEM_STORE_RELOCATE_FLAG
+
+When set, pvPara must pass a pointer to a CERT_SYSTEM_STORE_RELOCATE_PARA
+structure rather than a string. The structure indicates both the name of the
+store and its location in the registry.
+
+=item CERT_SYSTEM_STORE_UNPROTECTED_FLAG
+
+By default, when the CurrentUser "Root" store is opened, any SystemRegistry
+roots not on the protected root list are deleted from the cache before
+I<CertOpenStore> returns. When this flag is set, this default is overridden
+and all of the roots in the SystemRegistry are returned and no check of the
+protected root list is made.
+
+=back
+
+The CERT_STORE_PROV_REGISTRY provider uses the following high-word flags.
+
+=over 8
+
+=item CERT_REGISTRY_STORE_SERIALIZED_FLAG
+
+The CERT_STORE_PROV_REG provider saves certificates, CRLs, and CTLs in a single,
+serialized store subkey instead of performing the default save operation. The
+default is that each certificate, CRL, or CTL is saved as a separate registry
+subkey under the appropriate subkey.
+
+This flag is mainly used for stores downloaded from the GPT, such as the
+CurrentUserGroupPolicy and LocalMachineGroupPolicy stores.
+
+When CERT_REGISTRY_STORE_SERIALIZED_FLAG is set, store additions, deletions,
+or property changes are not persisted until there is a call to either
+I<CertCloseStore> or I<CertControlStore> using CERT_STORE_CTRL_COMMIT.
+
+=item CERT_REGISTRY_STORE_REMOTE_FLAG
+
+The key passed in I<pvPara> points to a registry key on a remote computer. To
+access a registry key on a remote computer, security permissions on the remote
+computer must be set to allow access. For further details, see the Remarks
+section later in this topic.
+
+=back
+
+The file provider types, CERT_STORE_PROV_FILE and CERT_STORE_PROV_FILENAME, use
+the CERT_FILE_STORE_COMMIT_ENABLE high word flag. Setting this flag commits
+any additions to the store or any changes made to properties of contexts in
+the store to the file store either when CertCloseStore is called or when
+I<CertControlStore> is called with CERT_STORE_CONTROL_COMMIT.
+
+CertOpenStore fails with E_INVALIDARG if both CERT_FILE_STORE_COMMIT_ENABLE
+and CERT_STORE_READONLY_FLAG are set in dwFlags.
+
+The CERT_STORE_PROV_LDAP provider type uses the following high word flags.
+
+=over 8
+
+=item CERT_LDAP_STORE_SIGN_FLAG
+
+To provide integrity required by some applications, digitally sign all LDAP
+traffic to and from a Windows 2000 LDAP server using the Kerberos
+authentication protocol.
+
+=item CERT_LDAP_STORE_AREC_EXCLUSIVE_FLAG
+
+Performs an A-Record-only DNS lookup on the URL named in the I<pvPara> parameter.
+This prevents bogus DNS queries from being generated when resolving URL host
+names. Use this flag when passing a hostname as opposed to a domain name for
+the I<pvPara> parameter.
+
+=back
 
 =item pvPara
 
-Pointer to a VOID that can point to data of different data types depending on
+[in] Pointer to a VOID that can point to data of different data types depending on
 the provider being used. Detailed information about the type and content to be
 passed in pvPara is specified in the descriptions of the available providers.
 
@@ -141,6 +816,68 @@ If the function succeeds, the return value is a handle to the certificate store.
 
 If the function fails, the return value is 0. For extended error information,
 call I<Win32::GetLastError()>.
+
+=item Remarks
+
+A system store is a collection consisting of one or more physical sibling
+stores. For each system store, there are predefined physical sibling stores.
+After opening a system store such as MY at CERT_SYSTEM_STORE_CURRENT_USER,
+I<CertOpenStore> is called to open of all of the physical stores in the
+system store collection. Each of these physical stores is added to the system
+store collection using I<CertAddStoreToCollection>. All certificates, CRLs,
+and CTLs in those physical stores are available through the logical system
+store collection.
+
+The following system store locations can be opened remotely:
+
+=over 8
+
+=item *
+
+CERT_SYSTEM_STORE_LOCAL_MACHINE
+
+=item *
+
+CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY
+
+=item *
+
+CERT_SYSTEM_STORE_SERVICES
+
+=item *
+
+CERT_SYSTEM_STORE_USERS
+
+=back
+
+System store locations are opened remotely by prefixing the store name in the
+string passed to pvPara with the computer name. Examples of remote system
+store names are:
+
+=over 8
+
+=item *
+
+ComputerName\CA
+
+=item *
+
+\\ComputerName\CA
+
+=item *
+
+ComputerName\ServiceName\Trust
+
+=item *
+
+\\ComputerName\ServiceName\Trust
+
+=back
+
+To access a remote store, the security permissions in the registry keys on
+the remote computer must be set to allow access. For more information on
+setting security permissions in a Windows registry, see
+MSDN Article ID Q155363.
 
 =item Requirements
 
@@ -167,6 +904,520 @@ B<Redistributable:> Requires Internet Explorer 3.02 or later on Windows NT 4.0.
 =head2 CertUnregisterPhysicalStore
 
 =head2 CertUnregisterSystemStore
+
+=head1 CONSTANTS
+
+Here is a overview over all available constants.
+
+They can be imported to your namespace one by one, like
+
+    use Win32::Crypt::API qw/ CERT_STORE_ADD_NEW CERT_STORE_PROV_FILENAME /;
+
+or all at once
+
+    use Win32::Crypt::API ':consts';
+
+If you do not like to pollute your own namespace, you can call any constant
+
+    Win32::Crypt::API::CERT_STORE_ADD_USE_EXISTING
+
+as usual.
+
+=over 4
+
+=item *
+
+CERT_LDAP_STORE_AREC_EXCLUSIVE_FLAG
+
+=item *
+
+CERT_LDAP_STORE_OPENED_FLAG
+
+=item *
+
+CERT_LDAP_STORE_SIGN_FLAG
+
+=item *
+
+CERT_PHYSICAL_STORE_ADD_ENABLE_FLAG
+
+=item *
+
+CERT_PHYSICAL_STORE_INSERT_COMPUTER_NAME_ENABLE_FLAG
+
+=item *
+
+CERT_PHYSICAL_STORE_OPEN_DISABLE_FLAG
+
+=item *
+
+CERT_PHYSICAL_STORE_REMOTE_OPEN_DISABLE_FLAG
+
+=item *
+
+CERT_REGISTRY_STORE_CLIENT_GPT_FLAG
+
+=item *
+
+CERT_REGISTRY_STORE_LM_GPT_FLAG
+
+=item *
+
+CERT_REGISTRY_STORE_REMOTE_FLAG
+
+=item *
+
+CERT_REGISTRY_STORE_SERIALIZED_FLAG
+
+=item *
+
+CERT_STORE_ADD_ALWAYS
+
+=item *
+
+CERT_STORE_ADD_NEW
+
+=item *
+
+CERT_STORE_ADD_NEWER
+
+=item *
+
+CERT_STORE_ADD_NEWER_INHERIT_PROPERTIES
+
+=item *
+
+CERT_STORE_ADD_REPLACE_EXISTING
+
+=item *
+
+CERT_STORE_ADD_REPLACE_EXISTING_INHERIT_PROPERTIES
+
+=item *
+
+CERT_STORE_ADD_USE_EXISTING
+
+=item *
+
+CERT_STORE_BACKUP_RESTORE_FLAG
+
+=item *
+
+CERT_STORE_CREATE_NEW_FLAG
+
+=item *
+
+CERT_STORE_CTRL_COMMIT_CLEAR_FLAG
+
+=item *
+
+CERT_STORE_CTRL_COMMIT_FORCE_FLAG
+
+=item *
+
+CERT_STORE_CTRL_INHIBIT_DUPLICATE_HANDLE_FLAG
+
+=item *
+
+CERT_STORE_DEFER_CLOSE_UNTIL_LAST_FREE_FLAG
+
+=item *
+
+CERT_STORE_DELETE_FLAG
+
+=item *
+
+CERT_STORE_ENUM_ARCHIVED_FLAG
+
+=item *
+
+CERT_STORE_MANIFOLD_FLAG
+
+=item *
+
+CERT_STORE_MAXIMUM_ALLOWED_FLAG
+
+=item *
+
+CERT_STORE_NO_CRYPT_RELEASE_FLAG
+
+=item *
+
+CERT_STORE_OPEN_EXISTING_FLAG
+
+=item *
+
+CERT_STORE_PROV_COLLECTION
+
+=item *
+
+CERT_STORE_PROV_FILENAME
+
+=item *
+
+CERT_STORE_PROV_LDAP
+
+=item *
+
+CERT_STORE_PROV_MEMORY
+
+=item *
+
+CERT_STORE_PROV_PHYSICAL
+
+=item *
+
+CERT_STORE_PROV_PKCS7
+
+=item *
+
+CERT_STORE_PROV_SERIALIZED
+
+=item *
+
+CERT_STORE_PROV_SMART_CARD
+
+=item *
+
+CERT_STORE_PROV_SYSTEM
+
+=item *
+
+CERT_STORE_PROV_SYSTEM_REGISTRY
+
+=item *
+
+CERT_STORE_READONLY_FLAG
+
+=item *
+
+CERT_STORE_SET_LOCALIZED_NAME_FLAG
+
+=item *
+
+CERT_STORE_SHARE_CONTEXT_FLAG
+
+=item *
+
+CERT_STORE_SHARE_STORE_FLAG
+
+=item *
+
+CERT_STORE_UNSAFE_PHYSICAL_FLAG
+
+=item *
+
+CERT_STORE_UPDATE_KEYID_FLAG
+
+=item *
+
+CERT_SYSTEM_STORE_CURRENT_SERVICE
+
+=item *
+
+CERT_SYSTEM_STORE_CURRENT_SERVICE_ID
+
+=item *
+
+CERT_SYSTEM_STORE_CURRENT_USER
+
+=item *
+
+CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY
+
+=item *
+
+CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY_ID
+
+=item *
+
+CERT_SYSTEM_STORE_CURRENT_USER_ID
+
+=item *
+
+CERT_SYSTEM_STORE_LOCAL_MACHINE
+
+=item *
+
+CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE
+
+=item *
+
+CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE_ID
+
+=item *
+
+CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY
+
+=item *
+
+CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY_ID
+
+=item *
+
+CERT_SYSTEM_STORE_LOCAL_MACHINE_ID
+
+=item *
+
+CERT_SYSTEM_STORE_LOCATION_MASK
+
+=item *
+
+CERT_SYSTEM_STORE_LOCATION_SHIFT
+
+=item *
+
+CERT_SYSTEM_STORE_RELOCATE_FLAG
+
+=item *
+
+CERT_SYSTEM_STORE_SERVICES
+
+=item *
+
+CERT_SYSTEM_STORE_SERVICES_ID
+
+=item *
+
+CERT_SYSTEM_STORE_UNPROTECTED_FLAG
+
+=item *
+
+CERT_SYSTEM_STORE_USERS
+
+=item *
+
+CERT_SYSTEM_STORE_USERS_ID
+
+=item *
+
+CRYPT_E_ALREADY_DECRYPTED
+
+=item *
+
+CRYPT_E_ATTRIBUTES_MISSING
+
+=item *
+
+CRYPT_E_AUTH_ATTR_MISSING
+
+=item *
+
+CRYPT_E_BAD_ENCODE
+
+=item *
+
+CRYPT_E_BAD_LEN
+
+=item *
+
+CRYPT_E_BAD_MSG
+
+=item *
+
+CRYPT_E_CONTROL_TYPE
+
+=item *
+
+CRYPT_E_DELETED_PREV
+
+=item *
+
+CRYPT_E_EXISTS
+
+=item *
+
+CRYPT_E_FILERESIZED
+
+=item *
+
+CRYPT_E_FILE_ERROR
+
+=item *
+
+CRYPT_E_HASH_VALUE
+
+=item *
+
+CRYPT_E_INVALID_IA5_STRING
+
+=item *
+
+CRYPT_E_INVALID_INDEX
+
+=item *
+
+CRYPT_E_INVALID_MSG_TYPE
+
+=item *
+
+CRYPT_E_INVALID_NUMERIC_STRING
+
+=item *
+
+CRYPT_E_INVALID_PRINTABLE_STRING
+
+=item *
+
+CRYPT_E_INVALID_X500_STRING
+
+=item *
+
+CRYPT_E_ISSUER_SERIALNUMBER
+
+=item *
+
+CRYPT_E_MISSING_PUBKEY_PARA
+
+=item *
+
+CRYPT_E_MSG_ERROR
+
+=item *
+
+CRYPT_E_NOT_CHAR_STRING
+
+=item *
+
+CRYPT_E_NOT_DECRYPTED
+
+=item *
+
+CRYPT_E_NOT_FOUND
+
+=item *
+
+CRYPT_E_NOT_IN_CTL
+
+=item *
+
+CRYPT_E_NOT_IN_REVOCATION_DATABASE
+
+=item *
+
+CRYPT_E_NO_DECRYPT_CERT
+
+=item *
+
+CRYPT_E_NO_KEY_PROPERTY
+
+=item *
+
+CRYPT_E_NO_MATCH
+
+=item *
+
+CRYPT_E_NO_PROVIDER
+
+=item *
+
+CRYPT_E_NO_REVOCATION_CHECK
+
+=item *
+
+CRYPT_E_NO_REVOCATION_DLL
+
+=item *
+
+CRYPT_E_NO_SIGNER
+
+=item *
+
+CRYPT_E_NO_TRUSTED_SIGNER
+
+=item *
+
+CRYPT_E_NO_VERIFY_USAGE_CHECK
+
+=item *
+
+CRYPT_E_NO_VERIFY_USAGE_DLL
+
+=item *
+
+CRYPT_E_OID_FORMAT
+
+=item *
+
+CRYPT_E_OSS_ERROR
+
+=item *
+
+CRYPT_E_PENDING_CLOSE
+
+=item *
+
+CRYPT_E_RECIPIENT_NOT_FOUND
+
+=item *
+
+CRYPT_E_REVOCATION_OFFLINE
+
+=item *
+
+CRYPT_E_REVOKED
+
+=item *
+
+CRYPT_E_SECURITY_SETTINGS
+
+=item *
+
+CRYPT_E_SELF_SIGNED
+
+=item *
+
+CRYPT_E_SIGNER_NOT_FOUND
+
+=item *
+
+CRYPT_E_STREAM_INSUFFICIENT_DATA
+
+=item *
+
+CRYPT_E_STREAM_MSG_NOT_READY
+
+=item *
+
+CRYPT_E_UNEXPECTED_ENCODING
+
+=item *
+
+CRYPT_E_UNEXPECTED_MSG_TYPE
+
+=item *
+
+CRYPT_E_UNKNOWN_ALGO
+
+=item *
+
+CRYPT_E_VERIFY_USAGE_OFFLINE
+
+=item *
+
+CRYPT_I_NEW_PROTECTION_REQUIRED
+
+=item *
+
+E_INVALIDARG
+
+=item *
+
+PKCS_7_ASN_ENCODING
+
+=item *
+
+PKCS_7_NDR_ENCODING
+
+=item *
+
+X509_ASN_ENCODING
+
+=item *
+
+X509_NDR_ENCODING
+
+=back
 
 =head1 SEE ALSO
 

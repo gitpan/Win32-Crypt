@@ -1,5 +1,9 @@
 Revision history for Perl extension Win32::Crypt
 
+0.00_003  Wed Jul 21 02:33 2006
+    - even more POD
+    - CertAddCertificateLinkToStore added to Certificate Store Functions
+
 0.00_002  Wed Jul 19 19:41 2006
 	- CHANGES file added
 	- POD added
