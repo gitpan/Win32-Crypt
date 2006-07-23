@@ -1,6 +1,6 @@
 ---
 name: Win32-Crypt
-version: 0.00_003
+version: 0.00_004
 author: ~
 abstract: ~
 license: perl
@@ -10,5 +10,5 @@ requires:
 provides:
   Win32::Crypt::API:
     file: lib/Win32/Crypt/API.pm
-    version: 0.00_003
+    version: 0.00_004
 generated_by: Module::Build version 0.2611

@@ -19,9 +19,595 @@ applications.
 
 =head2 new
 
-    my $capi = Win32::Crypt::API->new;
+    my $cryptapi = Win32::Crypt::API->new;
 
 =head2 constant_names
+
+Returns a list of all available constants. It can either be called as a class
+
+    Win32::Crypt::API->constant_names;
+
+or an object method.
+
+    $cryptapi->constant_names;
+
+=head1 CRYPTOGRAPHIC SERVICE PROVIDER FUNCTIONS
+
+Applications use service provider functions to connect and disconnect a
+cryptographic service provider (CSP).
+
+=head2 CryptAcquireContext( phProv, pszContainer, pszProvider, dwProvType, dwFlags )
+
+The I<CryptAcquireContext> function is used to acquire a handle to a
+particular key container within a particular cryptographic service provider
+(CSP). This returned handle is used in calls to CryptoAPI functions that use
+the selected CSP.
+
+This function first attempts to find a CSP with the characteristics described
+in the I<dwProvType> and I<pszProvider> parameters. If the CSP is found, the
+function attempts to find a key container within the CSP matching the name
+specified by the I<pszContainer> parameter. To acquire the context and the key
+container of a private key associated with the public key of a certificate,
+use I<CryptAcquireCertificatePrivateKey>.
+
+With the appropriate setting of dwFlags, this function can also create and
+destroy key containers and can provide access to a CSP with a temporary key
+container if access to a private key is not required.
+
+    BOOL WINAPI CryptAcquireContext(
+        HCRYPTPROV *phProv,
+        LPCTSTR pszContainer,
+        LPCTSTR pszProvider,
+        DWORD dwProvType,
+        DWORD dwFlags
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item phProv
+
+[out] Pointer to a handle of a cryptographic service provider (CSP).
+
+=item pszContainer
+
+[in] Key container name. This is a zero terminated string that identifies the key
+container to the CSP. This name is independent of the method used to store the
+keys. Some CSPs store their key containers internally (in hardware), some use
+the system registry, and others use the file system. When I<dwFlags> is set to
+CRYPT_VERIFYCONTEXT, pszContainer must be set to zero.
+
+When I<pszContainer> is zero, a default key container name is used. For example,
+the Microsoft Base Cryptographic Provider uses the logon name of the user
+currently logged on as the key container name. Other CSPs can also have
+default key containers that can be acquired in this way.
+
+Applications must not use the default key container to store private keys.
+When multiple applications use the same container, one application can change
+or destroy the keys that another application needs to have available. If
+applications use key containers linked to the application the risk is reduced
+of other applications tampering with keys necessary for proper function.
+
+An application can obtain the name of the key container in use by reading the
+PP_CONTAINER value with the I<CryptGetProvParam> function.
+
+=item pszProvider
+
+[in] zero terminated string specifying the name of the CSP to be used.
+
+If this parameter is zero, the user default provider is used. For more information,
+see L</"Cryptographic Service Provider Contexts">. For a list of available
+cryptographic providers, see L</"Cryptographic Provider Names">.
+
+An application can obtain the name of the CSP in use by reading the PP_NAME CSP value in the dwParam parameter with the CryptGetProvParam function.
+
+Due to changing export control restrictions, the default CSP can change between operating system releases. To ensure interoperability on different operating system platforms, the CSP should be explicitly set using this parameter instead of using the default CSP.
+
+=item dwProvType
+
+[in] Specifies the type of provider to acquire. Defined provider types are
+discussed in L</"Cryptographic Provider Types">.
+
+=item dwFlags
+
+[in] Flag values. This parameter is usually set to zero, but some applications
+set one or more of the following flags.
+
+=over 8
+
+=item CRYPT_VERIFYCONTEXT
+
+This option is intended for applications that do not use public/private key
+pairs, such as applications that perform only hashing and symmetric
+encryption. Only applications that create signatures or decrypt messages need
+access to a private key. All other applications should consider setting this
+flag. When this flag is set, the application has no access to the private keys
+of public/private key pairs, and the pszContainer parameter must be set to
+zero. In Windows 2000 and later, when this flag is set, temporary public key
+pairs can be created, but they are not persisted.
+
+When I<CryptAcquireContext> is called, many CSPs require input from the owning
+user before granting access to the private keys in the key container. For
+example, the private keys can be encrypted, requiring a password from the user
+before they can be used. However, if the CRYPT_VERIFYCONTEXT flag is
+specified, access to the private keys is not required and the user interface
+can be bypassed.
+
+=item CRYPT_NEWKEYSET
+
+Creates a new key container with the name specified by I<pszContainer>. If
+I<pszContainer> is zero, a key container with the default name is created.
+
+=item CRYPT_MACHINE_KEYSET
+
+By default, keys and key containers are stored as user keys. For Base
+Providers, this means that user key containers are stored in the user's
+profile. A key container created without this flag can only be accessed by the
+user creating the key container and a user with administration privileges.
+
+The CRYPT_MACHINE_KEYSET flag can be combined with all of the other flags to
+indicate that the key container of interest is a machine key container and the
+CSP treats it as such. For Base Providers, this means that the keys are stored
+locally on the computer that created the key container. If a key container is
+to be a machine container, the CRYPT_MACHINE_KEYSET flag must be used with all
+calls to CryptAcquireContext that reference the machine container. The key
+container created with CRYPT_MACHINE_KEYSET can only be accessed by its
+creator and by user with administrator privileges unless access rights to the
+container are granted using I<CryptSetProvParam>.
+
+The CRYPT_MACHINE_KEYSET flag is useful when the user is accessing from a
+service or user account that did not log on interactively When key containers
+are created, most CSPs do not automatically create any public/private key
+pairs. These keys must be created as a separate step with the I<CryptGenKey>
+function.
+
+=item CRYPT_DELETEKEYSET
+
+Delete the key container specified by I<pszContainer>. If I<pszContainer> is
+zero, the key container with the default name is deleted. All key pairs in the
+key container are also destroyed.
+When this flag is set, the value returned in I<phProv> is undefined, and thus,
+the I<CryptReleaseContext> function need not be called afterwards.
+
+=item CRYPT_SILENT
+
+The application requests that the CSP not display any user interface (UI) for
+this context. If the CSP must display the UI to operate, the call fails and
+the NTE_SILENT_CONTEXT error code is set as the last error. In addition, if
+calls are made to I<CryptGenKey> with the CRYPT_USER_PROTECTED flag with a
+context that has been acquired with the CRYPT_SILENT flag, the calls fail and
+the CSP sets NTE_SILENT_CONTEXT.
+
+CRYPT_SILENT is intended for use with applications for which the UI cannot be
+displayed by the CSP.
+
+This flag is supported with Microsoft® Windows® 2000 or later. It is not
+supported in Windows 95, Windows 98, Windows Millennium or Microsoft® Internet
+Explorer version 5.0.
+
+=back
+
+=back
+
+=item Return Values
+
+If the function succeeds, the return value is nonzero (TRUE).
+
+If the function fails, the return value is zero (FALSE). For extended error
+information, call I<Win32::GetLastError()>.
+
+The error codes prefaced by NTE are generated by the particular CSP being used.
+Some possible error codes follow.
+
+=over 4
+
+=item ERROR_BUSY ( 170L )
+
+Some CSPs set this error if the CRYPT_DELETEKEYSET flag value is set and another thread or process is using this key container.
+
+=item ERROR_INVALID_PARAMETER ( 87L )
+
+One of the parameters contains an invalid value. This is most often an invalid pointer.
+
+=item ERROR_NOT_ENOUGH_MEMORY ( 8L )
+
+The operating system ran out of memory during the operation.
+
+=item NTE_BAD_FLAGS ( 0x80090009L )
+
+The dwFlags parameter has an invalid value.
+
+=item NTE_BAD_KEYSET( 0x80090016L )
+
+The key container could not be opened. A common cause of this error is that
+the key container does not exist. To create a key container, call
+I<CryptAcquireContext> using the CRYPT_NEWKEYSET flag. This error code can
+also indicate that access to an existing key container is denied. Access
+rights to the container can be granted by the key set creator using
+I<CryptSetProvParam>.
+
+=item NTE_BAD_KEYSET_PARAM( 0x8009001FL )
+
+The pszContainer or pszProvider parameter is set to an invalid value.
+
+=item NTE_BAD_PROV_TYPE( 0x80090014L )
+
+The value of the dwProvType parameter is out of range. All provider types must
+be from 1 to 999, inclusive.
+
+=item NTE_BAD_SIGNATURE( 0x80090006L )
+
+The provider DLL signature could not be verified. Either the DLL or the
+digital signature has been tampered with.
+
+=item NTE_EXISTS( 0x8009000FL )
+
+The dwFlags parameter is CRYPT_NEWKEYSET, but the key container already
+exists.
+
+=item NTE_KEYSET_ENTRY_BAD( 0x8009001AL )
+
+The pszContainer key container was found but is corrupt.
+
+=item NTE_KEYSET_NOT_DEF( 0x80090019L )
+
+The key container specified by pszContainer does not exist or the requested
+provider does not exist.
+
+=item NTE_NO_MEMORY( 0x8009000EL )
+
+The CSP ran out of memory during the operation.
+
+=item NTE_PROV_DLL_NOT_FOUND( 0x8009001EL )
+
+The provider DLL file does not exist or is not on the current path.
+
+=item NTE_PROV_TYPE_ENTRY_BAD( 0x80090018L )
+
+The provider type specified by dwProvType is corrupt. This error can relate to
+either the user default CSP list or the computer default CSP list.
+
+=item NTE_PROV_TYPE_NO_MATCH( 0x8009001BL )
+
+The provider type specified by dwProvType does not match the provider type
+found. Note that this error can only occur when I<pszProvider> specifies
+an actual CSP name.
+
+=item NTE_PROV_TYPE_NOT_DEF( 0x80090017L )
+
+No entry exists for the provider type specified by I<dwProvType>.
+
+=item NTE_PROVIDER_DLL_FAIL( 0x8009001DL )
+
+The provider DLL file could not be loaded or failed to initialize.
+
+=item NTE_SIGNATURE_FILE_BAD( 0x8009001CL )
+
+An error occurred while loading the DLL file image, prior to verifying
+its signature.
+
+=back
+
+=item Remarks
+
+None.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 and later.
+
+B<Windows 95/98/Me:> Included in Windows 95 OSR2 and later.
+
+B<Redistributable:> Requires Internet Explorer 3.02 or later on Windows 95.
+
+=back
+
+=head2 CryptContextAddRef( hProv, pdwReserved, dwFlags )
+
+The I<CryptContextAddRef> function adds one to the reference count of an
+HCRYPTPROV cryptographic service provider (CSP) handle. This function should
+be used if the CSP handle is included as a member of any structure passed to
+another function. The I<CryptReleaseContext> function should be called when
+the CSP handle is no longer needed.
+
+    BOOL WINAPI CryptContextAddRef(
+        HCRYPTPROV hProv,
+        DWORD *pdwReserved,
+        DWORD dwFlags
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item hProv
+
+[in] HCRYPTPROV handle for which the reference count is being incremented.
+This handle must have already been created using I<CryptAcquireContext>.
+
+=item pdwReserved
+
+[in] Reserved for future use and must be zero.
+
+=item dwFlags
+
+[in] Reserved for future use and must be zero.
+
+=back
+
+=item Return Values
+
+If the function succeeds, the return value is nonzero (TRUE).
+
+If the function fails, the return value is zero (FALSE). For extended error
+information, call I<Win32::GetLastError()>. One possible error code is the
+following.
+
+=over 8
+
+=item ERROR_INVALID_PARAMETER
+
+One of the parameters contains an invalid value. This is most often an
+invalid pointer.
+
+=back
+
+=item Remarks
+
+The I<CryptContextAddRef> function is used to increase the reference count on
+a HCRYPTPROV handle so that multiple calls to I<CryptReleaseContext> are
+required to actually release the handle.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows 2000 and later.
+
+B<Windows 95/98/Me:> Included in Windows 98 and later.
+
+=back
+
+=head2 CryptEnumProviders( dwIndex, pdwReserved, dwFlags, pdwProvType, pszProvName, pcbProvName )
+
+The I<CryptEnumProviders> function retrieves the first or next available
+cryptographic service providers (CSPs). Used in a loop, this function can
+retrieve in sequence all of the CSPs available on a computer.
+
+Possible CSPs include Microsoft Base Cryptographic Provider version 1.0 and
+Microsoft Enhanced Cryptographic Provider version 1.0.
+
+    BOOL WINAPI CryptEnumProviders(
+        DWORD dwIndex,
+        DWORD *pdwReserved,
+        DWORD dwFlags,
+        DWORD *pdwProvType,
+        LPTSTR pszProvName,
+        DWORD *pcbProvName
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item dwIndex
+
+[in] Index of the next provider to be enumerated.
+
+=item pdwReserved
+
+[in] Reserved for future use and must be zero.
+
+=item dwFlags
+
+[in] Reserved for future use and must be zero.
+
+=item pdwProvType
+
+[out] Address of the DWORD value designating the type of the enumerated
+provider.
+
+=item pszProvName
+
+[out] Pointer to a buffer that receives the data from the enumerated provider.
+This is a string including the terminating NULL character.
+
+This parameter can be zero to set the size of the name for memory allocation
+purposes. For more information, see L</"Retrieving Data of Unknown Length">.
+
+=item pcbProvName
+
+[in/out] Pointer to a DWORD value specifying the size, in bytes, of the buffer
+pointed to by the pszProvName parameter. When the function returns, the DWORD
+value contains the number of bytes stored in the buffer.
+
+B<Note>: When processing the data returned in the buffer, applications must
+use the actual size of the data returned. The actual size can be slightly
+smaller than the size of the buffer specified on input. (On input, buffer
+sizes are usually specified large enough to ensure that the largest possible
+output data fits in the buffer.) On output, the variable pointed to by this
+parameter is updated to reflect the actual size of the data copied to the
+buffer.
+
+=back
+
+=item Return Values
+
+If the function succeeds, the return value is nonzero (TRUE).
+
+If the function fails, the return value is zero (FALSE). For extended error
+information, call I<Win32::GetLastError>.
+
+The error codes prefaced by NTE are generated by the particular CSP being
+used. Some possible error codes follow.
+
+=over 8
+
+=item ERROR_MORE_DATA
+
+The I<pszProvName> buffer was not large enough to hold the provider name.
+
+=item ERROR_NO_MORE_ITEMS
+
+There are no more items to enumerate.
+
+=item ERROR_NOT_ENOUGH_MEMORY
+
+The operating system ran out of memory.
+
+=item NTE_BAD_FLAGS
+
+The I<dwFlags> parameter has an unrecognized value.
+
+=item NTE_FAIL
+
+Something was wrong with the type registration.
+
+=back
+
+=item Remarks
+
+CryptEnumProviders is used to enumerate the providers on a computer. The
+provider types can be enumerated by using I<CryptEnumProviderTypes>.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows 2000 and later.
+
+B<Windows 95/98/Me:> Included in Windows 98 and later.
+
+=back
+
+=head2 CryptEnumProviderTypes
+
+=over 1
+
+=item Parameters
+
+=item Return Values
+
+=item Remarks
+
+=item Requirements
+
+=back
+
+=head2 CryptGetDefaultProvider
+
+=over 1
+
+=item Parameters
+
+=item Return Values
+
+=item Remarks
+
+=item Requirements
+
+=back
+
+=head2 CryptGetProvParam
+
+=over 1
+
+=item Parameters
+
+=item Return Values
+
+=item Remarks
+
+=item Requirements
+
+=back
+
+=head2 CryptInstallDefaultContext
+
+=over 1
+
+=item Parameters
+
+=item Return Values
+
+=item Remarks
+
+=item Requirements
+
+=back
+
+=head2 CryptReleaseContext
+
+=over 1
+
+=item Parameters
+
+=item Return Values
+
+=item Remarks
+
+=item Requirements
+
+=back
+
+=head2 CryptSetProvider
+
+=over 1
+
+=item Parameters
+
+=item Return Values
+
+=item Remarks
+
+=item Requirements
+
+=back
+
+=head2 CryptSetProviderEx
+
+=over 1
+
+=item Parameters
+
+=item Return Values
+
+=item Remarks
+
+=item Requirements
+
+=back
+
+=head2 CryptSetProvParam
+
+=over 1
+
+=item Parameters
+
+=item Return Values
+
+=item Remarks
+
+=item Requirements
+
+=back
+
+=head2 CryptUninstallDefaultContext
+
+=over 1
+
+=item Parameters
+
+=item Return Values
+
+=item Remarks
+
+=item Requirements
+
+=back
 
 =head1 CERTIFICATE STORE FUNCTIONS
 
@@ -439,9 +1025,9 @@ provider that automatically persists changes immediately.
 At the start of every enumeration or find store call, a check is made to
 determine whether or not a change has been made in the store. If the store h
 as changed, a re-synchronization is done. This check is only done on first
-enumeration or find calls, when the I<pPrevContext> is 0.
+enumeration or find calls, when the I<pPrevContext> is zero.
 
-The I<pvCtrPara> member is not used and must be set to 0.
+The I<pvCtrPara> member is not used and must be set to zero.
 
 =item CERT_STORE_CTRL_CANCEL_NOTIFY
 
@@ -457,7 +1043,7 @@ parameter points to the event HANDLE to be canceled.
 address of a handle where the system signals the notification change event
 when a change from the persisted state of the store is detected. The handle
 must be initialized with a call to the function CreateEvent. The pvCtrlPara
-parameter can be set to NULL for registry-based stores. If pvCrtlPara is 0, an
+parameter can be set to NULL for registry-based stores. If pvCrtlPara is zero, an
 internal notification change event is created and registered to be signaled.
 Using the internal notification change event allows resynchronization operations
 only if the store was changed.
@@ -466,10 +1052,10 @@ If I<dwCtrlType> is CERT_STORE_CTRL_RESYNC, set pvCtrlPara to the address of
 the event handle to be signaled on the next change in the persisted store.
 Typically, this address is the address of the event handle passed with
 CERT_STORE_CTRL_NOTIFY_CHANGE during initialization. The event handle passed
-is rearmed. If I<pvCtrlPara> is set to 0, no event is rearmed.
+is rearmed. If I<pvCtrlPara> is set to zero, no event is rearmed.
 
 If I<dwCtrlType> CERT_STORE_CTRL_COMMIT, I<pvCtrlPara> is not used and must be
-set to 0.
+set to zero.
 
 =back
 
@@ -496,6 +1082,7 @@ I<CertControlStore> returns FALSE and GetLastError is set to the
 ERROR_NOT_SUPPORTED code.
 
 =item Remarks
+
 Resynchronization of a store can be done at any time. It need not follow a
 signaled notification change event.
 
@@ -515,15 +1102,453 @@ B<Windows 95/98/Me:> Unsupported.
 
 =back
 
-=head2 CertDuplicateStore
+=head2 CertDuplicateStore( hCertStore )
 
-=head2 CertEnumPhysicalStore
+The CertDuplicateStore function duplicates a store handle by incrementing the
+store's reference count.
 
-=head2 CertEnumSystemStore
+    HCERTSTORE WINAPI CertDuplicateStore(
+        HCERTSTORE hCertStore
+    );
 
-=head2 CertEnumSystemStoreLocation
+=over 1
 
-=head2 CertGetStoreProperty
+=item Parameters
+
+=over 4
+
+=item hCertStore
+
+[in] Handle of the certificate store for which the reference count is being
+incremented.
+
+=back
+
+=item Return Values
+
+Currently, a copy is not made of the handle, and the returned handle is the
+same as the handle that was input. If zero is passed in, the called function
+will raise an access violation (AV) exception.
+
+=item Remarks
+
+None.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP3 and later.
+
+B<Windows 95/98/Me:> Included in Windows 95 OSR2 and later.
+
+B<Redistributable:> Requires Internet Explorer 3.02 or later on Windows NT 4.0.
+
+
+=back
+
+=head2 CertEnumPhysicalStore( pvSystemStore, dwFlags, pvArg, pfnEnum )
+
+The CertEnumPhysicalStore function retrieves the physical store on a computer.
+The function calls the provided callback function for each physical store
+found.
+
+    BOOL WINAPI CertEnumPhysicalStore(
+        const void *pvSystemStore,
+        DWORD dwFlags,
+        void *pvArg,
+        PFN_CERT_ENUM_PHYSICAL_STORE pfnEnum
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item pvSystemStore
+
+[in] If CERT_SYSTEM_STORE_RELOCATE_FLAG is set in dwFlags, pvSystemStore
+points to a CERT_SYSTEM_STORE_RELOCATE_PARA structure that indicates both the
+name and the location of the system store to be enumerated. Otherwise,
+I<pvSystemStore> is a pointer to a Unicode string that names the system store
+whose physical stores are to be enumerated. For details on prefixing a
+ServiceName or ComputerName to the system store name,
+see I<CertRegisterSystemStore>.
+
+=item dwFlags
+
+[in] Specifies the location of the system store. The following flag values
+are defined.
+
+=over 8
+
+=item *
+
+CERT_SYSTEM_STORE_CURRENT_USER
+
+=item *
+
+CERT_SYSTEM_STORE_CURRENT_SERVICE
+
+=item *
+
+CERT_SYSTEM_STORE_LOCAL_MACHINE
+
+=item *
+
+CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY
+
+=item *
+
+CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY
+
+=item *
+
+CERT_SYSTEM_STORE_SERVICES
+
+=item *
+
+CERT_SYSTEM_STORE_USERS
+
+=item *
+
+CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE
+
+=back
+
+In addition, CERT_SYSTEM_STORE_RELOCATE_FLAG can be combined using a bitwise-OR
+operation with any of the high-word location flags.
+
+=item pvArg
+
+[in] Pointer to a void that allows the application to declare, define, and
+initialize a structure to hold any information to be passed to the callback
+enumeration function.
+
+=item pfnEnum
+
+[in] Pointer to the callback function used to show the details for each
+physical store. This callback function determines the content and format for
+the presentation of information on each physical store. The application must
+provide the callback function and declare the following signature:
+
+    BOOL WINAPI CertEnumPhysicalStoreCallback(
+        const void *pvSystemStore,
+        DWORD dwFlags,
+        LPCWSTR pwszStoreName,
+        PCERT_SYSTEM_STORE_INFO pStoreInfo,
+        void *pvReserved,
+        void *pvArg
+    );
+
+The I<pvArg> parameter passed to the callback function is the I<pvArg> pointer
+passed to I<CertEnumPhysicalStore>.
+
+=back
+
+=item Return Values
+
+If the function succeeds and another physical store was found, the return
+value is TRUE.
+
+If the function fails and another physical store was not found, the return
+value is FALSE. For extended error information, call GetLastError.
+
+If the system store location only supports system stores and does not support
+physical stores, the function returns FALSE and I<Win32::GetLastError()>
+returns the ERROR_NOT_SUPPORTED code.
+
+=item Remarks
+
+To use I<CertEnumPhysicalStore>, an application must declare and define the
+ENUM_ARG structure and an enumeration callback function.
+
+To access a remote store, the security permissions in the registry keys on
+that remote computer must be set to allow access. For more information on
+setting security permissions in a Windows registry, see MSDN Article ID Q155363.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP4 and later.
+
+B<Windows 95/98/Me:> Unsupported.
+
+=back
+
+=head2 CertEnumSystemStore( dwFlags, pvSystemStoreLocationPara, pvArg, pfnEnum )
+
+The I<CertEnumSystemStore> function retrieves the system store available. The
+function calls the provided callback function for each system store found.
+
+    BOOL WINAPI CertEnumSystemStore(
+        DWORD dwFlags,
+        void *pvSystemStoreLocationPara,
+        void *pvArg,
+        PFN_CERT_ENUM_SYSTEM_STORE pfnEnum
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item dwFlags
+
+[in] Specifies the location of the system store. The following flag values are defined.
+
+=over 8
+
+=item *
+
+CERT_SYSTEM_STORE_CURRENT_USER
+
+=item *
+
+CERT_SYSTEM_STORE_CURRENT_SERVICE
+
+=item *
+
+CERT_SYSTEM_STORE_LOCAL_MACHINE
+
+=item *
+
+CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY
+
+=item *
+
+CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY
+
+=item *
+
+CERT_SYSTEM_STORE_SERVICES
+
+=item *
+
+CERT_SYSTEM_STORE_USERS
+
+=item *
+
+CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE
+
+=back
+
+In addition, CERT_SYSTEM_STORE_RELOCATE_FLAG can be combined using a
+bitwise-OR operation with any of the high-word location flags.
+
+=item pvSystemStoreLocationPara
+
+in/optional] If CERT_SYSTEM_STORE_RELOCATE_FLAG is set in the dwFlags
+parameter, pvSystemStoreLocationPara points to a CERT_SYSTEM_STORE_RELOCATE_PARA
+structure that indicates both the name and the location of the system store.
+Otherwise, I<pvSystemStoreLocationPara> is a pointer to a Unicode string that
+names the system store. For CERT_SYSTEM_STORE_LOCAL_MACHINE or
+CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY, I<pvSystemStoreLocationPara> can
+optionally be set to a Unicode computer name for enumerating local computer
+stores on a remote computer, for example "\\ComputerName" or "ComputerName".
+The leading "\\" backslashes are optional in the ComputerName.
+
+For CERT_SYSTEM_STORE_SERVICES or CERT_SYSTEM_STORE_USERS, if
+I<pvSystemStoreLocationPara> is zero, the function enumerates both the
+service/user names and the stores for each service/user name. Otherwise,
+I<pvSystemStoreLocationPara> is a Unicode string specifying a remote computer
+name and/or service/user name, for example "ServiceName,""\\ComputerName,"
+or "ComputerName\."
+
+If only the ComputerName is specified, it must have either the leading "\\"
+backslashes or a trailing backslash. Otherwise, it is interpreted as the
+ServiceName or UserName.
+
+=item pvArg
+
+[in] Pointer to a void allowing the application to declare, define, and
+initialize a structure to hold any information to be passed to the callback
+enumeration function.
+
+=item pfnEnum
+
+[in] Pointer to the callback function used to show the details for each system
+store. This callback function determines the content and format for the
+presentation of information on each system store. The application must provide
+the callback function and must declare it with the following signature:
+
+    BOOL WINAPI CertEnumSystemStoreCallback(
+        const void *pvSystemStore,
+        DWORD dwFlags,
+        PCERT_SYSTEM_STORE_INFO pStoreInfo,
+        void *pvReserved,
+        void *pvArg
+    );
+
+The I<pvArg> parameter passed by I<CertEnumSystemStore> to the callback function
+is the I<pvArg> pointer passed to I<CertEnumSystemStore>.
+
+=back
+
+=item Return Values
+
+If the function succeeds, the return value is TRUE.
+
+If the function fails, the return value is FALSE.
+
+=item Remarks
+
+To use I<CertEnumSystemStore>, the application must declare and define the
+ENUM_ARG structure and an enumeration callback function.
+
+To access a remote store, the security permissions in the registry keys on
+that remote computer must be set to allow access. For more information on
+setting security permissions in a Windows registry, see MSDN Article
+ID Q155363.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP4 and later.
+
+B<Windows 95/98/Me:> Unsupported.
+
+=back
+
+=head2 CertEnumSystemStoreLocation( dwFlags, pvArg, pgnEnum )
+
+The I<CertEnumSystemStoreLocation> function retrieves all of the system store
+locations. The function calls the provided callback function for each system
+store location found.
+
+    BOOL WINAPI CertEnumSystemStoreLocation(
+        DWORD dwFlags,
+        void *pvArg,
+        PFN_CERT_ENUM_SYSTEM_STORE_LOCATION pfnEnum
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item dwFlags
+
+[in] Reserved for future use and must be zero.
+
+=item pvArg
+
+in] Pointer to a void allowing the application to declare, define, and
+initialize a structure to hold any information to be passed to the callback
+enumeration function.
+
+=item pfnEnum
+
+[in] Pointer to the callback function used to show the details for each store
+location. This callback function determines the content and format for the
+presentation of information on each store location. The callback function must
+be provided by the application and must be declared with the following
+signature:
+
+    BOOL WINAPI CertEnumStoreLocationCallback(
+        LPCWSTR pvszStoreLoocations
+        DWORD dwFlags,
+        void *pvReserved,
+        void *pvArg
+    );
+
+The I<pvArg> parameter passed to the callback function is the I<pvArg> pointer
+passed to I<CertEnumSystemStoreLocation>.
+
+=back
+
+=item Return Values
+
+If the function succeeds, the return value is TRUE.
+
+If the function fails, the return value is FALSE.
+
+=item Remarks
+
+To use I<CertEnumSystemStoreLocation>, an application must declare and define
+the ENUM_ARG structure and an enumeration callback function.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP4 and later.
+
+B<Windows 95/98/Me:> Unsupported.
+
+=back
+
+=head2 CertGetStoreProperty( hCertStore, dwPropId, pvData, pcbData )
+
+The I<CertGetStoreProperty> function retrieves a store property.
+
+    BOOL CertGetStoreProperty(
+        HCERTSTORE hCertStore,
+        DWORD dwPropId,
+        void *pvData,
+        DWORD *pcbData
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item hCertStore
+
+[in] Handle of an open certificate store.
+
+=item dwPropId
+
+[in] Indicates one of a range of store properties. There is one predefined
+store property, CERT_STORE_LOCALIZED_NAME_PROP_ID, the localized name of
+the store.
+
+User defined properties must be outside the current range of values for
+predefined context properties. Currently, user-defined dwPropId values begin
+at 4,096.
+
+=item pvData
+
+[out] Pointer to a buffer that receives the data as determined by dwPropId.
+For CERT_STORE_LOCALIZED_NAME_PROP_ID, this is the localized name of the store,
+and pvData points to a zero terminated Unicode, wide-character string. For
+other dwPropIds, pvData points to an array of bytes.
+
+This parameter can be zero to set the size of this information for memory
+allocation purposes. For more information, see
+L</"Retrieving Data of Unknown Length">.
+
+=item pcbData
+
+[in/out] Pointer to a DWORD value that specifies the size, in bytes, of the
+I<pvData> buffer. When the function returns, the DWORD value contains the
+number of bytes stored in the buffer.
+
+=back
+
+=item Return Values
+
+If the function succeeds, the return value is TRUE.
+
+If the function fails, the return value is FALSE.
+
+If the store property is found, the function returns TRUE, I<pvData> points to
+the property, and I<pcbData> points to the length of the string. If the store
+property is not found, the function returns FALSE and I<Win32::GetLastError()>
+returns CRYPT_E_NOT_FOUND.
+
+=item Remarks
+
+Store property identifiers are properties applicable to an entire store. They
+are not properties on an individual certificate, CRL, or CTL context.
+Currently, no store properties are persisted.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP4 and later.
+
+B<Windows 95/98/Me:> Unsupported.
+
+=back
 
 =head2 CertOpenStore( lpszStoreProvider, dwMsgAndCertEncodingType, hCryptProv, dwFlags, pvPara )
 
@@ -552,16 +1577,49 @@ special cases.
 [in] Specifies the store provider type. The following predefined store provider
 types furnish most common application needs.
 
-    CERT_STORE_PROV_MEMORY
-    CERT_STORE_PROV_FILENAME
-    CERT_STORE_PROV_SYSTEM
-    CERT_STORE_PROV_PKCS7
-    CERT_STORE_PROV_SERIALIZED
-    CERT_STORE_PROV_COLLECTION
-    CERT_STORE_PROV_SYSTEM_REGISTRY
-    CERT_STORE_PROV_PHYSICAL
-    CERT_STORE_PROV_SMART_CARD
-    CERT_STORE_PROV_LDAP
+=over 8
+
+=item *
+
+CERT_STORE_PROV_MEMORY
+
+=item *
+
+CERT_STORE_PROV_FILENAME
+
+=item *
+
+CERT_STORE_PROV_SYSTEM
+
+=item *
+
+CERT_STORE_PROV_PKCS7
+
+=item *
+
+CERT_STORE_PROV_SERIALIZED
+
+=item *
+
+CERT_STORE_PROV_COLLECTION
+
+=item *
+
+CERT_STORE_PROV_SYSTEM_REGISTRY
+
+=item *
+
+CERT_STORE_PROV_PHYSICAL
+
+=item *
+
+CERT_STORE_PROV_SMART_CARD
+
+=item *
+
+CERT_STORE_PROV_LDAP
+
+=back
 
 The store provider type passed in I<lpszStoreProvider> determines the type of the
 parameter passed in I<pvPara> and the use and meaning of the high word of the
@@ -573,7 +1631,7 @@ For more information, please check L<http://msdn.mircosoft.com>.
 
 [in] Applicable only to the CERT_STORE_PROV_PKCS7 or CERT_STORE_PROV_FILENAME
 provider types. For all other provider types, this parameter is unused and
-should be set to 0.
+should be set to zero.
 
 Both a certificate and a message encoding type are required for the
 CERT_STORE_PROV_PKCS7 and CERT_STORE_PROV_FILENAME provider types.
@@ -588,7 +1646,7 @@ The most common encoding types are used by passing
 
 =item hCryptProv
 
-[in] Handle to a cryptographic provider. Passing 0 in this parameter causes an
+[in] Handle to a cryptographic provider. Passing zero in this parameter causes an
 appropriate, default provider to be used. Using the default provider is
 recommended. The default or specified cryptographic provider is used for all
 store functions that verify the signature of a subject certificate or CRL.
@@ -631,12 +1689,12 @@ duplications and free operations.
 If CertCloseStore is called with CERT_CLOSE_STORE_FORCE_FLAG,
 CERT_STORE_DEFER_CLOSE_UNTIL_LAST_FREE_FLAG is ignored.
 
-When this flag is set and a non-0 I<hCryptProv> value is passed, that provider
+When this flag is set and a non-zero I<hCryptProv> value is passed, that provider
 will continue to be used even after the call to I<CertCloseStore>.
 
 =item CERT_STORE_DELETE_FLAG
 
-The store is deleted instead of being opened. I<CertOpenStore> returns 0 for
+The store is deleted instead of being opened. I<CertOpenStore> returns zero for
 both success and failure of the deletion. To determine the success of the
 deletion, call I<Win32::GetLastError>, which returns zero if the store was deleted and a
 nonzero value if it was not deleted.
@@ -656,8 +1714,8 @@ by setting their CERT_ARCHIVED_PROP_ID properties.
 
 =item CERT_STORE_NO_CRYPT_RELEASE_FLAG
 
-This flag is not used when the 0 is passed in the I<hCryptProv> parameter and
-the default CSP is used. The flag is valid when a non-0 CSP handle is
+This flag is not used when the zero is passed in the I<hCryptProv> parameter and
+the default CSP is used. The flag is valid when a non-zero CSP handle is
 passed as the I<hCryptProv> parameter. Setting this flag prevents the automatic
 release of a non-default CSP when the certificate store is closed.
 
@@ -706,21 +1764,37 @@ dwFlags to specify system store registry locations:
 
 =over 8
 
-=item CERT_SYSTEM_STORE_CURRENT_SERVICE
+=item *
 
-=item CERT_SYSTEM_STORE_CURRENT_USER
+CERT_SYSTEM_STORE_CURRENT_SERVICE
 
-=item CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY
+=item *
 
-=item CERT_SYSTEM_STORE_LOCAL_MACHINE
+CERT_SYSTEM_STORE_CURRENT_USER
 
-=item CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE
+=item *
 
-=item CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY
+CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY
 
-=item CERT_SYSTEM_STORE_SERVICES
+=item *
 
-=item CERT_SYSTEM_STORE_USERS
+CERT_SYSTEM_STORE_LOCAL_MACHINE
+
+=item *
+
+CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE
+
+=item *
+
+CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY
+
+=item *
+
+CERT_SYSTEM_STORE_SERVICES
+
+=item *
+
+CERT_SYSTEM_STORE_USERS
 
 =back
 
@@ -814,7 +1888,7 @@ passed in pvPara is specified in the descriptions of the available providers.
 
 If the function succeeds, the return value is a handle to the certificate store.
 
-If the function fails, the return value is 0. For extended error information,
+If the function fails, the return value is zero. For extended error information,
 call I<Win32::GetLastError()>.
 
 =item Remarks
@@ -889,21 +1963,657 @@ B<Redistributable:> Requires Internet Explorer 3.02 or later on Windows NT 4.0.
 
 =back
 
-=head2 CertOpenSystemStore
+=head2 CertOpenSystemStore( hProv, szSubsystemProtocol )
 
-=head2 CertRegisterPhysicalStore
+The CertOpenSystemStore function is a simplified function used to open the
+most common system certificate store. To open certificate stores with more
+complex requirements, such as file-based or memory-based stores, use
+I<CertOpenStore>.
 
-=head2 CertRegisterSystemStore
+    HCERTSTORE WINAPI CertOpenSystemStore(
+        HCRYPTPROV hProv,
+        LPCTSTR szSubsystemProtocol
+    );
 
-=head2 CertRemoveStoreFromCollection
+=over 1
 
-=head2 CertSaveStore
+=item Parameters
 
-=head2 CertSetStoreProperty
+=over 4
 
-=head2 CertUnregisterPhysicalStore
+=item hProv
 
-=head2 CertUnregisterSystemStore
+[in] HCRYPTPROV handle of a cryptographic service provider (CSP). Set I<hProv>
+to zero to use the default CSP. If I<hProv> is not zero, it must be a CSP handle
+created using I<CryptAcquireContext>.
+
+=item szSubsystemProtocol
+
+[in] String naming a system store. Some example system stores are listed here:
+
+=over 8
+
+=item "CA"
+
+Certification authority certificates.
+
+=item "MY"
+
+A certificate store holding "My" certificates with their associated private
+keys.
+
+=item "ROOT"
+
+Root certificates.
+
+=item "SPC"
+
+Software publisher certificates.
+
+=back
+
+B<Note>: If the system store name provided in this parameter is not the name
+of an existing system store, a new system store will be created and used.
+I<CertEnumSystemStore> can be used to list the names of existing system
+stores.
+
+=back
+
+=item Return Values
+
+If the function succeeds, the return value is a handle to the certificate store.
+
+If the function fails, the return value is zero. For extended error
+information, call I<Win32::GetLastError()>.
+
+B<Note>: Errors from the called function I<CertOpenStore> are propagated to
+this function.
+
+=item Remarks
+
+After the system store is opened, all the standard certificate store functions
+can be used to manipulate the certificates.
+
+After use, the store should be closed by using I<CertCloseStore>.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP3 and later.
+
+B<Windows 95/98/Me:> Included in Windows 95 OSR2 and later.
+
+B<Redistributable:> Requires Internet Explorer 3.02 or later on Windows NT 4.0.
+
+=back
+
+=head2 CertRegisterPhysicalStore( pvSystemStore, dwFlags, pwszStoreName, pStoreInfo, pvReserved )
+
+The CertRegisterPhysicalStore function adds a physical store to a registry system store collection.
+
+    BOOL WINAPI CertRegisterPhysicalStore(
+        const void *pvSystemStore,
+        DWORD dwFlags,
+        LPCWSTR pwszStoreName,
+        PCERT_PHYSICAL_STORE_INFO pStoreInfo,
+        void *pvReserved
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item pvSystemStore
+
+in] System store collection to which the physical store is added. This
+parameter points either to a zero terminated Unicode string or to a
+CERT_SYSTEM_STORE_RELOCATE_PARA structure. For details on using the structure
+and on adding a ServiceName or ComputerName before the system store name
+string, see I<CertRegisterSystemStore>.
+
+=item dwFlags
+
+[in] The high word of the dwFlags parameter specifies the location of the
+system store. For details on defined high-word flags and prepending
+ServiceName, UserNames, and ComputerNames to the system store name,
+see I<CertRegisterSystemStore>.
+
+The following low-word flags are also defined and can be combined with
+high-word flags using a bitwise-OR operation.
+
+=over 8
+
+=item CERT_SYSTEM_STORE_RELOCATE_FLAG
+
+The system store is not in its default registry location and the
+I<pvSystemStore> parameter must be a pointer to a
+CERT_SYSTEM_STORE_RELOCATE_PARA structure.
+
+=item CERT_STORE_CREATE_NEW_FLAG
+
+The function fails if the physical store already exists in the store location.
+
+=back
+
+=item pwszStoreName
+
+[in] Pointer to a Unicode string naming the physical store to be added to
+the system store collection.
+
+=item pStoreInfo
+
+[in] Pointer to a CERT_PHYSICAL_STORE_INFO structure providing basic
+information about the physical store.
+
+=item pvReserved
+
+[in] Reserved for future use and must be set to zero.
+
+=back
+
+=item Return Values
+
+If the function succeeds, the return value is TRUE.
+
+If the function fails, the return value is FALSE.
+
+=item Remarks
+
+To access a remote store, the security permissions in the registry keys on
+that remote computer must be set to allow access. For more information on
+setting security permissions in a Windows registry,
+see MSDN Article ID Q155363.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP4 and later.
+
+B<Windows 95/98/Me:> Unsupported.
+
+=back
+
+=head2 CertRegisterSystemStore( pvSystemStore, dwFlags, pStoreInfo, pvReserved )
+
+The CertRegisterSystemStore function registers a system store.
+
+    BOOL WINAPI CertRegisterSystemStore(
+        const void *pvSystemStore,
+        DWORD dwFlags,
+        PCERT_SYSTEM_STORE_INFO pStoreInfo,
+        void *pvReserved
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item pvSystemStore
+
+[in] Identifies the system store to be registered. If
+CERT_SYSTEM_STORE_RELOCATE_FLAG is set in the I<dwFlags> parameter,
+I<pvSystemStore> points to a CERT_SYSTEM_STORE_RELOCATE_PARA structure.
+Otherwise, it points to a zero terminated Unicode string naming the system store.
+
+With appropriate settings in dwFlags, the identified store can be a system
+store on a remote local computer. Stores on remote computers can be registered
+with the computer name as a prefix to the name of the system store.
+For example, a remote local computer store can be registered with
+I<pvSystemStore> pointing to the string "\\ComputerName\Trust" or
+"ComputerName\Trust".
+
+Leading "\\" backslashes are optional before a ComputerName.
+
+=item dwFlags
+
+[in] The high word of the dwFlags parameter is used to specify the location of
+the system store. The following high-word values are defined.
+
+=over 8
+
+=item CERT_SYSTEM_STORE_CURRENT_SERVICE
+
+I<pvSystemStore> can be a system store name that is prefixed with the
+ServiceName.
+
+=item CERT_SYSTEM_STORE_CURRENT_USER
+
+I<pvSystemStore> can be a system store name that is prefixed with the UserName.
+
+=item CERT_SYSTEM_STORE_LOCAL_MACHINE
+
+I<pvSystemStore> can be a system store that is on a remote computer.
+
+=item CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY
+
+I<pvSystemStore> is a group policy store and can be on a remote computer.
+
+=item CERT_SYSTEM_STORE_SERVICES
+
+I<pvSystemStore> must be a system store name prefixed with the ServiceName.
+
+=item CERT_SYSTEM_STORE_USERS
+
+I<pvSystemStore> must be a system store name that is prefixed with the UserName.
+
+=back
+
+Stores on remote computers can be registered for CERT_SYSTEM_STORE_LOCAL_MACHINE,
+CERT_SYSTEM_STORE_SERVICES, CERT_SYSTEM_STORE_USERS, or
+CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY.
+
+The following low-word values are also defined and can be combined using a
+bitwise-OR operation with high-word values.
+
+=over 8
+
+=item CERT_SYSTEM_STORE_RELOCATE_FLAG
+
+The system store is not in its default register location and I<pvSystemStore>
+must be a pointer to a CERT_SYSTEM_STORE_RELOCATE_PARA structure.
+
+=item CERT_STORE_CREATE_NEW_FLAG
+
+The function fails if the system store already exists in the store location.
+
+=back
+
+=item pStoreInfo
+
+[in] Reserved for future use and must be set to zero.
+
+=item pvReserved
+
+[in] Reserved for future use and must be set to zero.
+
+=back
+
+=item Return Values
+
+If the function succeeds, the return value is TRUE.
+
+If the function fails, the return value is FALSE.
+
+=item Remarks
+
+To access a remote store, the security permissions in the registry keys on
+that remote computer must be set to allow access. For more information on
+setting security permissions in a Windows registry, see MSDN
+Article ID Q155363.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP4 and later.
+
+B<Windows 95/98/Me:> Unsupported.
+
+=back
+
+=head2 CertRemoveStoreFromCollection( hCollectionStore, hSiblingStore )
+
+The CertRemoveStoreFromCollection function removes a sibling certificate store
+from a collection store.
+
+    void WINAPI CertRemoveStoreFromCollection(
+        HCERTSTORE hCollectionStore,
+        HCERTSTORE hSiblingStore
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item hCollectionStore
+
+[in] Handle of the collection certificate store.
+
+=item hSiblingStore
+
+[in] Handle of the sibling certificate store to be removed from the collection
+store.
+
+=back
+
+=item Return Values
+
+None.
+
+=item Remarks
+
+None.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP4 and later.
+
+B<Windows 95/98/Me:> Unsupported.
+
+=back
+
+=head2 CertSaveStore( hCertStore, dwMsgAndCertEncodingType, dwSaveAs, dwSaveTo, pvSaveToPara, dwFlags )
+
+The I<CertSaveStore> function saves the certificate store to a file or to a
+memory BLOB.
+
+    BOOL WINAPI CertSaveStore(
+        HCERTSTORE hCertStore,
+        DWORD dwMsgAndCertEncodingType,
+        DWORD dwSaveAs,
+        DWORD dwSaveTo,
+        void *pvSaveToPara,
+        DWORD dwFlags
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item hCertStore
+
+[in] Handle of the certificate store to be saved.
+
+=item dwMsgAndCertEncodingType
+
+[in] Specifies the certificate and message encoding types. Encoding is used
+only when I<dwSaveAs> is CERT_STORE_SAVE_AS_PKCS7. Otherwise, the
+I<dwMsgAndCertEncodingType> parameter is not used.
+
+B<Note>: When needed, both a certificate and message encoding type are
+required and are specified by combining them with a bitwise-OR operation, as
+shown in the following example:
+
+    X509_ASN_ENCODING | PKCS_7_ASN_ENCODING
+
+=item dwSaveAs
+
+[in] Specifies whether the store can be saved as a serialized store containing
+properties in addition to encoded certificates, CRL, and CTLs
+(CERT_STORE_SAVE_AS_STORE), or as a PKCS #7 signed message that does not
+include additional properties (CERT_STORE_SAVE_AS_PKCS7).
+
+Note that the CERT_KEY_CONTEXT_PROP_ID property and the related
+CERT_KEY_PROV_HANDLE_PROP_ID and CERT_KEY_SPEC_PROP_ID values are not saved to
+a serialized store.
+
+The I<dwEncodingType> parameter specifies the message encoding type when
+I<dwSaveAs> is set to CERT_STORE_SAVE_AS_PKCS7.
+
+=item dwSaveTo
+
+[in] Along with the I<pvSaveToPara> parameter, specifies where to save the
+store as follows.
+
+When I<dwSaveTo> is set to CERT_STORE_SAVE_TO_FILE, the function saves the
+store to the specified file. The file's handle is passed in the
+I<pvSaveToPara> parameter. After a successful save operation, the file pointer
+is positioned after the last write operation.
+
+When I<dwSaveTo> is set to CERT_STORE_SAVE_TO_MEMORY, the function saves the
+store to the memory BLOB passed in I<pvSaveToPara>. Before use, the memory
+BLOB's I<pbData> and I<cbData> members must be initialized. Upon return,
+I<cbData> is updated with the actual length. For a length-only calculation,
+I<pbData> must be set to zero. If <pbData> is not zero and I<cbData> is not large
+enough, the function returns FALSE with a last error code of ERROR_MORE_DATA.
+
+When I<dwSaveTo> is set to CERT_STORE_SAVE_TO_FILENAME the function opens the
+file, saves to it, and closes it.
+
+=item pvSaveToPara
+
+[in/out] Pointer used to save the store. May be a file handle or a pointer to
+a MEMORY_BLOB structure.
+
+=item dwFlags
+
+[in] Reserved for future use and must be zero.
+
+=back
+
+=item Return Values
+
+If the function succeeds, the return value is TRUE.
+
+If the function fails, the return value is FALSE. For extended error
+information, call I<Win32::GetLastError()>.
+
+Note that CreateFile or WriteFile errors can be propagated to this function.
+One possible error code is CRYPT_E_FILE_ERROR which indicates that an error
+occurred while writing to the file.
+
+=item Remarks
+
+None.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP3 and later.
+
+B<Windows 95/98/Me:> Included in Windows 95 OSR2 and later.
+
+B<Redistributable:> Requires Internet Explorer 3.02 or later on Windows NT 4.0.
+
+=back
+
+=head2 CertSetStoreProperty( hCertStore, dwPropId, dwFlags, pvData )
+
+The I<CertSetStoreProperty> function sets a store property.
+
+    BOOL CertSetStoreProperty(
+        HCERTSTORE hCertStore,
+        DWORD dwPropId,
+        DWORD dwFlags,
+        const void *pvData
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item hCertStore
+
+[in] Handle for the certificate store.
+
+=item dwPropId
+
+[in] Indicates one of a range of store properties. Values for user-defined
+properties must be outside the current range of predefined context property
+values. Currently, user-defined pwPropId values begin at 4,096. There is one
+predefined store property, CERT_STORE_LOCALIZED_NAME_PROP_ID, the localized
+name of the store.
+
+=item dwFlags
+
+[in] Reserved for future use and must be zero.
+
+=item pvData
+
+[in] The type definition for I<pvData> depends on the I<dwPropId> value. If
+I<dwPropId> is CERT_STORE_LOCALIZED_NAME_PROP_ID, I<pvData> points to a
+CRYPT_DATA_BLOB structure. The I<pbData> member of that structure is a pointer
+to a zero terminated Unicode character string. The I<cbData> member of that
+structure is a DWORD value holding the length of the string.
+
+For user-defined I<dwPropId> values, I<pvData> is a pointer to an encoded
+PCRYPT_DATA_BLOB.
+
+If a value already exists for the selected property, the old value is replaced.
+
+Calling this function with I<pvData> set to zero deletes a property.
+
+=back
+
+=item Return Values
+
+If the function succeeds, the return value is TRUE.
+
+If the function fails, the return value is FALSE.
+
+=item Remarks
+
+Store property identifiers are properties applicable to an entire store. They
+are not properties for an individual certificate, CRL, or CTL context.
+Currently, no store properties are persisted.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP4 and later.
+
+B<Windows 95/98/Me:> Unsupported.
+
+=back
+
+=head2 CertUnregisterPhysicalStore( pvSystemStore, dwFlags, pwszStoreName )
+
+The I<CertUnregisterPhysicalStore> function removes a physical store from a
+specified system store collection. I<CertUnregisterPhysicalStore> can also be
+used to delete the physical store.
+
+    BOOL WINAPI CertUnregisterPhysicalStore(
+        const void *pvSystemStore,
+        DWORD dwFlags,
+        LPCWSTR pwszStoreName
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item pvSystemStore
+
+[in] Pointer to an identifier of the system store collection from which the
+physical store is to be removed. It is either to a zero terminated Unicode string
+or to a CERT_SYSTEM_STORE_RELOCATE_PARA structure. For details on using the
+structure and on prepending a ServiceName or ComputerName to the system store
+name string, see I<CertRegisterSystemStore>.
+
+=item dwFlags
+
+[in] The high word of the dwFlags parameter specifies the location of the
+system store. For details on defined high-word flags and on prepending
+ServiceName, UserNames, and ComputerNames to the system store name, see
+I<CertRegisterSystemStore>.
+
+The following low-word values are also defined. They can be combined using
+bitwise-OR operations with high-word values.
+
+=over 8
+
+=item CERT_SYSTEM_STORE_RELOCATE_FLAG
+
+The system store is not in its default registry location and I<pvSystemStore>
+must be a pointer to a CERT_SYSTEM_STORE_RELOCATE_PARA structure.
+
+=item CERT_STORE_DELETE_FLAG
+
+The physical store is first removed from the system store collection and is
+then deleted.
+
+=back
+
+=item pwszStoreName
+
+[in] zero terminated Unicode string naming the physical store.
+
+=back
+
+=item Return Values
+
+If the function succeeds, the return value is TRUE.
+
+If the function fails, the return value is FALSE.
+
+=item Remarks
+
+To access a remote store, the security permissions in the registry keys on
+that remote computer must be set to allow access. For more information on
+setting security permissions in a Windows registry, see MSDSN Article ID
+Q155363.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP4 and later.
+
+B<Windows 95/98/Me:> Unsupported.
+
+=back
+
+=head2 CertUnregisterSystemStore( pvSystemStore, dwFlags )
+
+The CertUnregisterSystemStore function unregisters a specified system store.
+
+    BOOL WINAPI CertUnregisterSystemStore(
+        const void *pvSystemStore,
+        DWORD dwFlags
+    );
+
+=over 1
+
+=item Parameters
+
+=over 4
+
+=item pvSystemStore
+
+[in] Identifies the system store to be unregistered. It points either to a
+zero terminated Unicode string or to a CERT_SYSTEM_STORE_RELOCATE_PARA structure.
+For details on using the structure and on prepending a ServiceName or
+ComputerName to the system store name string, see I<CertRegisterSystemStore>.
+
+=item dwFlags
+
+[in] The high word of the I<dwFlags> parameter specifies the location of the
+system store. For details on defined high-word flags and on prepending
+ServiceName, UserNames, and ComputerNames to the system store name,
+see I<CertRegisterSystemStore>.
+
+The following low-word values are also defined and can be combined with
+high-word values using a bitwise-OR operation.
+
+=over 8
+
+=item CERT_SYSTEM_STORE_RELOCATE_FLAG
+
+The system store is not in its default registry location and I<pvSystemStore>
+must be a pointer to a CERT_SYSTEM_STORE_RELOCATE_PARA structure.
+
+=item CERT_STORE_DELETE_FLAG
+
+The system store is deleted after it has been unregistered.
+
+=back
+
+=back
+
+=item Return Values
+
+If the function succeeds, the return value is TRUE.
+
+If the function fails, the return value is FALSE.
+
+=item Remarks
+
+To access a remote store, the security permissions in the registry keys on
+that remote computer must be set to allow access. For more information on
+setting security permissions in a Windows registry, see MSDN Article ID
+Q155363.
+
+=item Requirements
+
+B<Windows NT/2000/XP:> Included in Windows NT 4.0 SP4 and later.
+
+B<Windows 95/98/Me:> Unsupported.
+
+=back
 
 =head1 CONSTANTS
 
@@ -1395,11 +3105,115 @@ CRYPT_E_VERIFY_USAGE_OFFLINE
 
 =item *
 
+CRYPT_FASTSGC
+
+=item *
+
+CRYPT_FIRST
+
+=item *
+
+CRYPT_FLAG_IPSEC
+
+=item *
+
+CRYPT_FLAG_PCT1
+
+=item *
+
+CRYPT_FLAG_SIGNING
+
+=item *
+
+CRYPT_FLAG_SSL2
+
+=item *
+
+CRYPT_FLAG_SSL3
+
+=item *
+
+CRYPT_FLAG_TLS1
+
+=item *
+
+CRYPT_IMPL_HARDWARE
+
+=item *
+
+CRYPT_IMPL_MIXED
+
+=item *
+
+CRYPT_IMPL_REMOVABLE
+
+=item *
+
+CRYPT_IMPL_SOFTWARE
+
+=item *
+
+CRYPT_IMPL_UNKNOWN
+
+=item *
+
 CRYPT_I_NEW_PROTECTION_REQUIRED
 
 =item *
 
+CRYPT_NEXT
+
+=item *
+
+CRYPT_PSTORE
+
+=item *
+
+CRYPT_SEC_DESCR
+
+=item *
+
+CRYPT_SGC
+
+=item *
+
+CRYPT_SGC_ENUM
+
+=item *
+
+CRYPT_UI_PROMPT
+
+=item *
+
+ERROR_BUSY
+
+=item *
+
+ERROR_INVALID_PARAMETER
+
+=item *
+
+ERROR_MORE_DATA
+
+=item *
+
+ERROR_NOT_ENOUGH_MEMORY
+
+=item *
+
+ERROR_NO_MORE_ITEMS
+
+=item *
+
 E_INVALIDARG
+
+=item *
+
+NTE_BAD_FLAGS
+
+=item *
+
+NTE_FAIL
 
 =item *
 
@@ -1411,6 +3225,230 @@ PKCS_7_NDR_ENCODING
 
 =item *
 
+PP_ADMIN_PIN
+
+=item *
+
+PP_APPLI_CERT
+
+=item *
+
+PP_CERTCHAIN
+
+=item *
+
+PP_CHANGE_PASSWORD
+
+=item *
+
+PP_CLIENT_HWND
+
+=item *
+
+PP_CONTAINER
+
+=item *
+
+PP_CONTEXT_INFO
+
+=item *
+
+PP_CRYPT_COUNT_KEY_USE
+
+=item *
+
+PP_DELETEKEY
+
+=item *
+
+PP_ENUMALGS
+
+=item *
+
+PP_ENUMALGS_EX
+
+=item *
+
+PP_ENUMCONTAINERS
+
+=item *
+
+PP_ENUMELECTROOTS
+
+=item *
+
+PP_ENUMEX_SIGNING_PROT
+
+=item *
+
+PP_ENUMMANDROOTS
+
+=item *
+
+PP_IMPTYPE
+
+=item *
+
+PP_KEYEXCHANGE_ALG
+
+=item *
+
+PP_KEYEXCHANGE_KEYSIZE
+
+=item *
+
+PP_KEYEXCHANGE_PIN
+
+=item *
+
+PP_KEYSET_SEC_DESCR
+
+=item *
+
+PP_KEYSET_TYPE
+
+=item *
+
+PP_KEYSPEC
+
+=item *
+
+PP_KEYSTORAGE
+
+=item *
+
+PP_KEYX_KEYSIZE_INC
+
+=item *
+
+PP_KEY_TYPE_SUBTYPE
+
+=item *
+
+PP_NAME
+
+=item *
+
+PP_PROVTYPE
+
+=item *
+
+PP_SESSION_KEYSIZE
+
+=item *
+
+PP_SGC_INFO
+
+=item *
+
+PP_SIGNATURE_ALG
+
+=item *
+
+PP_SIGNATURE_KEYSIZE
+
+=item *
+
+PP_SIGNATURE_PIN
+
+=item *
+
+PP_SIG_KEYSIZE_INC
+
+=item *
+
+PP_SYM_KEYSIZE
+
+=item *
+
+PP_UI_PROMPT
+
+=item *
+
+PP_UNIQUE_CONTAINER
+
+=item *
+
+PP_USE_HARDWARE_RNG
+
+=item *
+
+PP_VERSION
+
+=item *
+
+PROV_DH_SCHANNEL
+
+=item *
+
+PROV_DSS
+
+=item *
+
+PROV_DSS_DH
+
+=item *
+
+PROV_EC_ECDSA_FULL
+
+=item *
+
+PROV_EC_ECDSA_SIG
+
+=item *
+
+PROV_EC_ECNRA_FULL
+
+=item *
+
+PROV_EC_ECNRA_SIG
+
+=item *
+
+PROV_FORTEZZA
+
+=item *
+
+PROV_INTEL_SEC
+
+=item *
+
+PROV_MS_EXCHANGE
+
+=item *
+
+PROV_REPLACE_OWF
+
+=item *
+
+PROV_RNG
+
+=item *
+
+PROV_RSA_AES
+
+=item *
+
+PROV_RSA_FULL
+
+=item *
+
+PROV_RSA_SCHANNEL
+
+=item *
+
+PROV_RSA_SIG
+
+=item *
+
+PROV_SPYRUS_LYNKS
+
+=item *
+
+PROV_SSL
+
+=item *
+
 X509_ASN_ENCODING
 
 =item *
@@ -1419,9 +3457,399 @@ X509_NDR_ENCODING
 
 =back
 
+=head1 APPENDIX
+
+=head2 Cryptographic Service Provider Contexts
+
+The first CryptoAPI function called by an application that uses any
+cryptographic APIs is the I<CryptAcquireContext> function. This function
+returns a handle to a particular CSP which includes the specification of a
+particular key container within the CSP. This key container is either a
+specifically requested key container or it is the default key container for
+the currently logged-on user.
+
+I<CryptAcquireContext> can also create a new key container.
+
+A cryptographic service provider (CSP) has both a name and a type. For example,
+the name of one of the CSPs currently shipped with the operating system is
+Microsoft Base Cryptographic Provider. It is an PROV_RSA_FULL type provider.
+The name of each provider is unique; the provider type is not.
+
+When an application calls I<CryptAcquireContext> to obtain a CSP handle, it
+specifies a provider type and, optionally, a provider name. If both a type and
+a name are specified, the function loads the CSP with the matching provider
+type and provider name. The function returns the CSP's handle which provides
+access to both the CSP and to a key container within the CSP.
+
+When an application calls I<CryptAcquireContext> and specifies a provider type
+but no provider name, the function looks for a named provider, first checking
+a list of default named providers associated with the logged-on user and, if
+that fails, from a list of default named providers associated with the
+computer. After the provider name has been determined, the
+I<CryptAcquireContext> function searches for the CSP for that provider,
+loads it, and returns its handle.
+
+=head2 Cryptographic Provider Names
+
+The following cryptographic service provider (CSP) names are defined: These
+constants are used with the CryptAcquireContext and CryptSetProvider functions.
+
+=over 4
+
+=item MS_DEF_PROV
+
+"Microsoft Base Cryptographic Provider v1.0"
+
+=item MS_ENHANCED_PROV
+
+"Microsoft Enhanced Cryptographic Provider "
+
+=item MS_STRONG_PROV
+
+"Microsoft Strong Cryptographic Provider"
+
+=item MS_DEF_RSA_SIG_PROV
+
+"Microsoft RSA Signature Cryptographic Provider"
+
+=item MS_DEF_RSA_SCHANNEL_PROV
+
+"Microsoft RSA SChannel Cryptographic Provider"
+
+=item MS_DEF_DSS_PROV
+
+"Microsoft Base DSS Cryptographic Provider"
+
+=item MS_DEF_DSS_DH_PROV
+
+"Microsoft Base DSS and Diffie-Hellman Cryptographic Provider"
+
+=item MS_ENH_DSS_DH_PROV
+
+"Microsoft Enhanced DSS and Diffie-Hellman Cryptographic Provider"
+
+=item MS_DEF_DH_SCHANNEL_PROV
+
+"Microsoft DH SChannel Cryptographic Provider"
+
+=item MS_SCARD_PROV
+
+"Microsoft Base Smart Card Cryptographic Provider"
+
+=back
+
+=head2 Cryptographic Provider Types
+
+The field of cryptography is large and growing. There are many different
+standard data formats and protocols. These are generally organized into groups
+or families, each of which has its own set of data formats and way of doing
+things. Even if two families use the same algorithm (for example, the RC2
+block cipher), they will often use different padding schemes, different key
+lengths, and different default modes. CryptoAPI is designed so that a CSP
+provider type represents a particular family.
+
+When an application connects to a CSP of a particular type, each of the
+CryptoAPI functions will, by default, operate in a way prescribed by the
+family that corresponds to that CSP type. An application's choice of provider
+type specifies the following items:
+
+=over 4
+
+=item Key exchange algorithm
+
+Each provider type specifies one and only one key exchange algorithm. Every
+CSP of a particular type must implement this algorithm. Applications specify
+the key exchange algorithm to use by selecting a CSP of the appropriate
+provider type.
+
+=item Digital signature algorithm
+
+Each provider type specifies one and only one digital signature algorithm.
+Every CSP of a particular type must implement this algorithm. Applications
+specify the digital signature algorithm to use by selecting a CSP of the
+appropriate provider type.
+
+=item Key BLOB formats
+
+The provide type determines the format of the key BLOB used to export keys
+from the CSP and to import keys into a CSP.
+
+=item Digital signature format
+
+The provider type determines the digital signature format. This ensures that
+a signature produced by a CSP of a given provider type can be verified by
+any CSP of the same provider type.
+
+=item Session key derivation scheme
+
+The provider type determines the method used to derived a session key from a
+hash.
+
+=item Key length
+
+Some provider types specify the length of public/private key pairs and the
+session keys.
+
+=item Default modes
+
+The provider type often specifies default modes for various options, such as
+the block encryption cipher mode or the block encryption padding method.
+
+=back
+
+Some advanced application might connect to more than one CSP at a time, but
+most application generally use only a single CSP.
+
+There are currently a number of predefined provider types. The next sections
+provide information on the following provider types:
+
+=over 4
+
+=item *
+
+PROV_RSA_FULL
+
+=item *
+
+PROV_RSA_AES
+
+=item *
+
+PROV_RSA_SIG
+
+=item *
+
+PROV_RSA_SCHANNEL
+
+=item *
+
+PROV_DSS
+
+=item *
+
+PROV_DSS_DH
+
+=item *
+
+PROV_DH_SCHANNEL
+
+=item *
+
+PROV_FORTEZZA
+
+=item *
+
+PROV_MS_EXCHANGE
+
+=item *
+
+PROV_SSL
+
+=back
+
+Even though some CSP types might be partially compatible with others, two or
+more applications that need to exchange keys and encrypted messages should use
+CSPs of the same type.
+
+A custom CSP writer can define a new provider type. However, the CSP writer is
+then responsible for distributing the new provider type to the authors of any
+applications that are to use it.
+
+=head2 Retrieving Data of Unknown Length
+
+Many functions return a potentially large amount of data to an address
+provided as one of the parameters by the application program. In all these
+cases, the operation is performed in a similar, if not identical, fashion.
+The parameter that points to the location of the returned data will use the
+notation convention where "pb" or "pv" are the first two characters of the
+parameter name. Another parameter will have "pcb" as the first three
+characters of the parameter name. This parameter represents the size, in bytes,
+of the data that will be returned to the "pb" or "pv" location. For example,
+consider the following function specification:
+
+    BOOL WINAPI SomeFunction(
+        PCCRL_CONTEXT pCrlContext,  // in
+        DWORD dwPropId,             // in
+        BYTE *pbData,               // out
+        DWORD *pcbData              // in/out
+    );
+
+In this example pbData is a pointer to the location where the data will be
+returned, and pcbData is the size, in bytes, of the returned data.
+
+B<Note>: The companion parameter to the "pcb" parameter may sometimes carry a
+slightly different prefix, such as "p" or "pv". Also, for companion parameters
+using the combination of prefixes "pwsz" and "pcch", the "pcch" parameter is
+the count in characters (Unicode or ASCII, as applicable), of the returned
+data.
+
+If the buffer specified by I<pbData> parameter is not large enough to hold the
+returned data, the function sets the ERROR_MORE_DATA code (which can be seen
+by calling I<Win32::GetLastError()>), and stores the required buffer size,
+in *bytes, into the variable pointed to by I<pcbData>.
+
+If zero is input for I<pbData> and I<pcbData> is non-zero, no error is
+returned and the function returns the size of the needed memory buffer, in
+bytes, in the variable pointed to by pcbData. This lets an application
+determine the size of, and the best way to allocate, a buffer for the
+returned data.
+
+B<Note>: When zero is input for I<pbData> to determine the size needed to
+ensure that the returned data fits in the specified buffer, the second call
+to the function (which populates the buffer with the desired data) may not
+use the whole buffer. After the second call, the actual size of the data
+returned is contained in I<pcbData>. Use this size when processing the data.
+
+The following example code demonstrates how input and output parameters might
+be implemented for this purpose:
+
+    #!/usr/bin/perl
+
+    use strict;
+    use Win32::Crypt ':consts';
+
+    use constant MY_ENCODING_TYPE => (PKCS_7_ASN_ENCODING | X509_ASN_ENCODING);
+
+    # Set up SomeFunction variables.
+    my $pCrlContext; # Initialized elsewhere
+    my $dwPropId;    # Initialized elsewhere
+    my $cbData;
+    my $pbData;
+
+    # Call SomeFunction to set cbData, the size of
+    # the buffer needed for pbData.
+
+    if(SomeFunction($pCrlContext, $dwPropId, 0, $cbData)) {
+        print "The function succeeded.\n";
+    } else {
+        # The function call failed. Handle the error.
+        HandleError("Function call failed.");
+    }
+
+    # The call succeeded; the size for the needed buffer, in bytes,
+    # now resides in cbData.
+
+    # Malloc memory for the size of the message.
+
+    $pbData = "\0" x $cbData;
+
+    # The space for the buffer has been allocated.
+    # Call SomeFunction to fill the buffer with the data.
+
+    if(SomeFunction($pCrlContext, $dwPropId, $pbData, $cbData)) {
+        print "The function succeeded.\n";
+    } else {
+        # The function call failed. Handle the error.
+        HandleError("Function call failed.");
+    }
+
+    # The function succeeded; the data is now in the buffer
+    # pointed to by pbData. Note that $cbData is
+    # updated with the actual size of the data returned. Use this size
+    # to process bytes of $pbData.
+
+
+
+    # This example uses the function HandleError, a simple error
+    # handling function, to print an error message to the standard error
+    # (STDERR) file and exit the program.
+    # For most applications, replace this function with one
+    # that does more extensive error reporting.
+    sub HandleError {
+        require Win32;
+
+        print STDERR "An error occurred in running the program.\n";
+        print STDERR $_[0], "\n";
+        print STDERR sprintf("Error number %x.\n", Win32::GetLastError());
+        print STDERR "Program terminating.\n";
+        exit 1;
+    }
+
+=head3 An Alternate Procedure
+
+A performance gain may be realized in dealing with in/out parameters by
+preallocating a buffer for the returned "pb" data without querying the
+function involved for the exact size "cb" needed. When the preallocated buffer
+is at least as big as the "cb" required, a performance savings is realized
+because the function is only called once, producing the returned data placed
+in the "pb" specified buffer. If the preallocated buffer is not large enough
+to hold the data, then the function fails and there is no performance gain.
+
+The following example code demonstrates how a preallocated buffer can be used
+to provide a performance gain:
+
+    # Assume SomeFunction (from the previous example) is called
+    # repetitively by an application, and that a buffer size of
+    # 50 bytes will handle the output for all but a few cases.
+
+    # Set up SomeFunction variables.
+
+    my $pCrlContext; # Initialized elsewhere.
+    my $dwPropId;    # Initialized elsewhere.
+
+    # Preallocate a 50 byte buffer, and
+    # use that buffer in a call to SomeFunction that produces the
+    # desired output data most of the time.
+    # However, the case where more than 50 bytes are required for the
+    # output data must be handled as well. For that case, use the cb
+    # returned by the failed call to SomeFunction to allocate a bigger
+    # buffer.
+    # After the allocation of additional bytes for the buffer, a second
+    # call to SomeFunction using the larger buffer is then made.
+
+    # Assume variables $pCrlContext and $dwPropId have been declared and
+    # initialized elsewhere.
+
+    my $dwTries = 0;    # the number of times the function has been tried
+    my $fMore=1;        # flag indicating the function needs to be tried
+    my $cbData = 50;
+    my $pbData;
+
+    # Begin processing. This loop is executed at most twice.
+
+    while($fMore) {
+        $pbdata = "\0" x $cbData;
+
+        # Memory has been allocated. Try the function.
+
+        if(SomeFunction($pCrlContext, $dwPropId, $pbData, $cbData)) {
+            # The function succeeded. Exit the loop.
+
+            print "The function succeeded. Exit the loop.\n";
+            $fMore = 0;
+        }
+        else
+        {
+            require Win32;
+
+            # If the error was not that the buffer was not big enough,
+            # exit the loop having failed.
+
+            if(Win32::GetLastError() != ERROR_MORE_DATA)
+            {
+                HandleError("General function failure.");
+            }
+            # If the error was that there was that there was not enough
+            # space in the buffer, try a second but not a third time.
+            if( ++$dwtries > 1 )
+            {
+                HandleError("Function call failed twice ");
+            }
+        }
+    }  // ends loop
+
+    # If the loop runs to completion, the function succeeded either
+    # the first or the second time through. In either case, cbData is
+    # updated with the actual size of the data returned.
+    # Use this size when processing $pbData.
+
+    # Process $pbData here as needed.
+
 =head1 SEE ALSO
 
-MSDN Home Page: L<http://msdn.mircosoft.com>
+Project Page: L<http://sourceforge.net/projects/perlwin32crypt/>
+
+MSDN Home Page: L<http://msdn.mircosoft.com/>
 
 =head1 AUTHOR
 

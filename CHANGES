@@ -1,8 +1,13 @@
 Revision history for Perl extension Win32::Crypt
 
+0.00_004  Wed Jul 24 01:35 2006
+    - even more POD
+    - even more constants
+    - added CRYPTOGRAPHIC SERVICE PROVIDER FUNCTIONS
+
 0.00_003  Wed Jul 21 02:33 2006
     - even more POD
-    - CertAddCertificateLinkToStore added to Certificate Store Functions
+    - CertAddCertificateLinkToStore added to CERTIFICATE STORE FUNCTIONS
 
 0.00_002  Wed Jul 19 19:41 2006
 	- CHANGES file added

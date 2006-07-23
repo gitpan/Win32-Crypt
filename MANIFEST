@@ -1,4 +1,4 @@
-Build.pl
+Build.PL
 CHANGES
 lib/Win32/Crypt/API.pm
 lib/Win32/Crypt/API.pod
